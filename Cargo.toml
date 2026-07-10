@@ -19,4 +19,10 @@ libc = "0.2.155"
 members = [
   "c-scape",
   "c-gull",
+  "taproot",
 ]
+
+# taproot: route eyra's c-gull/c-scape deps to the vendored fork members.
+[patch.crates-io]
+c-scape = { path = "c-scape" }
+c-gull = { path = "c-gull" }

@@ -245,11 +245,6 @@ unsafe extern "C" fn pthread_condattr_setclock(
         return libc::EINVAL;
     }
 
-    rustix::io::write(
-        rustix::stdio::stderr(),
-        b"unimplemented: pthread_condattr_setclock\n",
-    )
-    .ok();
     0
 }
 

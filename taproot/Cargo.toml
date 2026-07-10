@@ -1,0 +1,14 @@
+[package]
+name = "taproot"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "taproot"
+crate-type = ["cdylib"]
+
+[dependencies]
+# eyra pulls origin (startup) + c-gull (libc); the workspace root's
+# [patch.crates-io] routes c-gull/c-scape to the vendored fork members.
+eyra = "0.22"

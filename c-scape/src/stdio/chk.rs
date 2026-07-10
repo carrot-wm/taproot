@@ -36,9 +36,7 @@ unsafe extern "C" fn __vsnprintf_chk(
         __chk_fail();
     }
 
-    if flag > 0 {
-        unimplemented!("__USE_FORTIFY_LEVEL > 0");
-    }
+    let _ = flag; // taproot: ignore fortify level, forward to the plain formatter
 
     super::vsnprintf(ptr, len, fmt, va_list)
 }
@@ -63,9 +61,7 @@ unsafe extern "C" fn __vsprintf_chk(
     fmt: *const c_char,
     va_list: VaList<'_>,
 ) -> c_int {
-    if flag > 0 {
-        unimplemented!("__USE_FORTIFY_LEVEL > 0");
-    }
+    let _ = flag; // taproot: same
 
     if strlen == 0 {
         __chk_fail();
@@ -99,9 +95,7 @@ unsafe extern "C" fn __vfprintf_chk(
     fmt: *const c_char,
     va_list: VaList<'_>,
 ) -> c_int {
-    if flag > 0 {
-        unimplemented!("__USE_FORTIFY_LEVEL > 0");
-    }
+    let _ = flag; // taproot: same
 
     // Our `printf` uses `printf_compat` which doesn't support `%n`.
 
@@ -116,9 +110,7 @@ unsafe extern "C" fn __printf_chk(flag: c_int, fmt: *const c_char, args: ...) ->
 
 #[no_mangle]
 unsafe extern "C" fn __vprintf_chk(flag: c_int, fmt: *const c_char, va_list: VaList<'_>) -> c_int {
-    if flag > 0 {
-        unimplemented!("__USE_FORTIFY_LEVEL > 0");
-    }
+    let _ = flag; // taproot: same
 
     // Our `printf` uses `printf_compat` which doesn't support `%n`.
 
@@ -142,9 +134,7 @@ unsafe extern "C" fn __vasprintf_chk(
     fmt: *const c_char,
     va_list: VaList<'_>,
 ) -> c_int {
-    if flag > 0 {
-        unimplemented!("__USE_FORTIFY_LEVEL > 0");
-    }
+    let _ = flag; // taproot: same
 
     super::vasprintf(strp, fmt, va_list)
 }
@@ -161,9 +151,7 @@ unsafe extern "C" fn __vdprintf_chk(
     fmt: *const c_char,
     va_list: VaList<'_>,
 ) -> c_int {
-    if flag > 0 {
-        unimplemented!("__USE_FORTIFY_LEVEL > 0");
-    }
+    let _ = flag; // taproot: same
 
     super::vdprintf(fd, fmt, va_list)
 }

@@ -264,7 +264,7 @@ unsafe extern "C" fn aligned_alloc(alignment: size_t, size: size_t) -> *mut c_vo
 unsafe extern "C" fn valloc(size: size_t) -> *mut c_void {
     //libc!(libc::valloc(size));
 
-    memalign(rustix::param::page_size(), size)
+    memalign(crate::process_::page_size(), size)
 }
 
 #[linkage = "weak"]

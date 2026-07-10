@@ -15,9 +15,34 @@ mod write;
 use rustix::event::EventfdFlags;
 use rustix::fd::{BorrowedFd, IntoRawFd};
 
-use libc::{c_int, c_long, c_uint};
+use libc::{c_int, c_long, c_uint, c_void};
 
 use crate::convert_res;
+
+// taproot fork: forward any ioctl request c-scape doesn't special-case straight
+// to the kernel via rustix's generic Ioctl, instead of panicking. GPU drivers
+// issue custom ioctls almost exclusively, so this is load-bearing. `convert_res`
+// sets errno on failure, matching the C ioctl contract.
+struct GenericIoctl {
+    opcode: rustix::ioctl::Opcode,
+    arg: *mut c_void,
+}
+unsafe impl rustix::ioctl::Ioctl for GenericIoctl {
+    type Output = rustix::ioctl::IoctlOutput;
+    const IS_MUTATING: bool = true;
+    fn opcode(&self) -> rustix::ioctl::Opcode {
+        self.opcode
+    }
+    fn as_ptr(&mut self) -> *mut c_void {
+        self.arg
+    }
+    unsafe fn output_from_ptr(
+        out: rustix::ioctl::IoctlOutput,
+        _extract: *mut c_void,
+    ) -> rustix::io::Result<rustix::ioctl::IoctlOutput> {
+        Ok(out)
+    }
+}
 
 #[cfg(not(target_os = "wasi"))]
 #[no_mangle]
@@ -76,7 +101,18 @@ unsafe extern "C" fn ioctl(fd: c_int, request: c_long, mut args: ...) -> c_int {
                 None => -1,
             }
         }
-        _ => panic!("unrecognized ioctl({})", request),
+        _ => {
+            let arg = args.next_arg::<*mut c_void>();
+            let fd = BorrowedFd::borrow_raw(fd);
+            let generic = GenericIoctl {
+                opcode: request as rustix::ioctl::Opcode,
+                arg,
+            };
+            match convert_res(rustix::ioctl::ioctl(fd, generic)) {
+                Some(out) => out,
+                None => -1,
+            }
+        }
     }
 }
 

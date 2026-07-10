@@ -1,9 +1,18 @@
 use crate::convert_res;
 use core::ffi::CStr;
-use core::mem::{size_of, zeroed};
-use core::ptr::{addr_of, null_mut};
+use core::ptr::null_mut;
 use errno::{set_errno, Errno};
 use libc::{c_char, c_int, c_long, c_ulong, c_void};
+
+// taproot: in a dlopened libc, origin's `_start` never captured the auxv, so
+// `rustix::param::page_size()` reads 0 - which makes getpagesize/_SC_PAGESIZE
+// wrong and divides get_phys_pages by zero. Fall back to the standard 4 KiB.
+pub(crate) fn page_size() -> usize {
+    match rustix::param::page_size() {
+        0 => 4096,
+        n => n,
+    }
+}
 
 #[no_mangle]
 unsafe extern "C" fn getpagesize() -> c_int {
@@ -16,7 +25,7 @@ unsafe extern "C" fn getpagesize() -> c_int {
 unsafe extern "C" fn __getpagesize() -> c_int {
     //libc!(libc::__getpagesize());
 
-    rustix::param::page_size() as _
+    page_size() as _
 }
 
 #[no_mangle]
@@ -40,7 +49,7 @@ unsafe fn _sysconf(name: c_int) -> c_long {
     }
 
     match name {
-        libc::_SC_PAGESIZE => rustix::param::page_size() as _,
+        libc::_SC_PAGESIZE => page_size() as _,
         libc::_SC_CLK_TCK => rustix::param::clock_ticks_per_second() as _,
         #[cfg(not(target_os = "wasi"))]
         libc::_SC_GETPW_R_SIZE_MAX | libc::_SC_GETGR_R_SIZE_MAX => -1,
@@ -117,7 +126,7 @@ unsafe extern "C" fn get_phys_pages() -> c_long {
         info.mem_unit as c_ulong
     };
 
-    (info.totalram * mem_unit / rustix::param::page_size() as c_ulong)
+    (info.totalram * mem_unit / page_size() as c_ulong)
         .try_into()
         .unwrap_or(c_long::MAX)
 }
@@ -134,7 +143,7 @@ unsafe extern "C" fn get_avphys_pages() -> c_long {
         info.mem_unit as c_ulong
     };
 
-    ((info.freeram + info.bufferram) * mem_unit / rustix::param::page_size() as c_ulong)
+    ((info.freeram + info.bufferram) * mem_unit / page_size() as c_ulong)
         .try_into()
         .unwrap_or(c_long::MAX)
 }
@@ -160,34 +169,10 @@ fn _pathconf(name: c_int) -> c_long {
     }
 }
 
-#[cfg(not(target_os = "wasi"))]
-#[no_mangle]
-unsafe extern "C" fn dl_iterate_phdr(
-    callback: Option<
-        unsafe extern "C" fn(
-            info: *mut libc::dl_phdr_info,
-            size: usize,
-            data: *mut c_void,
-        ) -> c_int,
-    >,
-    data: *mut c_void,
-) -> c_int {
-    extern "C" {
-        static mut __executable_start: c_void;
-    }
-
-    libc!(libc::dl_iterate_phdr(callback, data));
-
-    let (phdr, _phent, phnum) = rustix::runtime::exe_phdrs();
-    let mut info = libc::dl_phdr_info {
-        dlpi_addr: addr_of!(__executable_start).expose_provenance() as _,
-        dlpi_name: c"/proc/self/exe".as_ptr(),
-        dlpi_phdr: phdr.cast(),
-        dlpi_phnum: phnum.try_into().unwrap(),
-        ..zeroed()
-    };
-    callback.unwrap()(&mut info, size_of::<libc::dl_phdr_info>(), data)
-}
+// taproot: c-scape's dl_iterate_phdr only reports the main executable (via
+// rustix::runtime::exe_phdrs). Mesa needs every loaded object's phdrs to find
+// the driver's .note.gnu.build-id, so the taproot cdylib provides a
+// /proc/self/maps-backed dl_iterate_phdr that enumerates all objects instead.
 
 #[cfg(not(target_os = "wasi"))]
 #[no_mangle]

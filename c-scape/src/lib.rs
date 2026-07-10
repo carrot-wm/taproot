@@ -1,6 +1,10 @@
 #![doc = include_str!("../README.md")]
 // c-scape does not use std; features that depend on std are in c-gull instead.
 #![no_std]
+// taproot fork: forbid LLVM from lowering our libc function bodies into calls to
+// themselves (loop-idiom recognition). Without this, strcpy/strcat compile down
+// to `mov %rdi,%rax; ret` - the copy is eliminated - in a cdylib/LTO build.
+#![no_builtins]
 // Nightly Rust features that we depend on.
 #![feature(thread_local)] // for `pthread_getspecific` etc.
 #![feature(c_variadic)] // for `printf`, `ioctl`, etc.

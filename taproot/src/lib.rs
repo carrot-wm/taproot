@@ -5,7 +5,6 @@
 extern crate eyra;
 
 mod barrier;
-mod dl;
 mod env;
 mod gap;
 mod scanf;

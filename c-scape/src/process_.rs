@@ -169,10 +169,71 @@ fn _pathconf(name: c_int) -> c_long {
     }
 }
 
-// taproot: c-scape's dl_iterate_phdr only reports the main executable (via
-// rustix::runtime::exe_phdrs). Mesa needs every loaded object's phdrs to find
-// the driver's .note.gnu.build-id, so the taproot cdylib provides a
-// /proc/self/maps-backed dl_iterate_phdr that enumerates all objects instead.
+// taproot: dl_iterate_phdr used to live here, reporting only the main
+// executable (via rustix::runtime::exe_phdrs). Mesa needs every loaded
+// object's phdrs to find the driver's .note.gnu.build-id, so dl.rs now
+// provides a /proc/self/maps-backed version that enumerates all objects.
+
+// taproot: a real getauxval, read uniformly from /proc/self/auxv - it works in
+// binaries and in a dlopened libc.so.6 alike (origin's `_start` never ran in
+// the latter, so no captured auxv exists). glibc semantics: unknown or absent
+// types return 0 with errno ENOENT. origin also defines `getauxval`, but only
+// recognizes the few types it needs; every reference resolving here keeps
+// origin's archive member from being pulled in at all.
+#[cfg(any(target_os = "android", target_os = "linux"))]
+#[no_mangle]
+unsafe extern "C" fn getauxval(type_: c_ulong) -> c_ulong {
+    libc!(libc::getauxval(type_));
+    _getauxval(type_)
+}
+
+// the glibc-internal alias; -fno-plt builds import it eagerly. origin defines
+// this one on aarch64, so stay out of its way there.
+#[cfg(any(target_os = "android", target_os = "linux"))]
+#[cfg(not(target_arch = "aarch64"))]
+#[no_mangle]
+unsafe extern "C" fn __getauxval(type_: c_ulong) -> c_ulong {
+    _getauxval(type_)
+}
+
+#[cfg(any(target_os = "android", target_os = "linux"))]
+fn _getauxval(type_: c_ulong) -> c_ulong {
+    use rustix::fs::{Mode, OFlags};
+
+    let fd = match rustix::fs::open(
+        unsafe { CStr::from_bytes_with_nul_unchecked(b"/proc/self/auxv\0") },
+        OFlags::RDONLY | OFlags::CLOEXEC,
+        Mode::empty(),
+    ) {
+        Ok(fd) => fd,
+        Err(_) => {
+            set_errno(Errno(libc::ENOENT));
+            return 0;
+        }
+    };
+    let mut buf = [0u8; 2048];
+    let mut filled = 0usize;
+    while filled < buf.len() {
+        match rustix::io::read(&fd, &mut buf[filled..]) {
+            Ok(0) => break,
+            Ok(n) => filled += n,
+            Err(rustix::io::Errno::INTR) => continue,
+            Err(_) => break,
+        }
+    }
+    // 16-byte records: u64 type, u64 value; terminated by AT_NULL
+    let mut i = 0usize;
+    while i + 16 <= filled {
+        let t = u64::from_ne_bytes(buf[i..i + 8].try_into().unwrap());
+        let v = u64::from_ne_bytes(buf[i + 8..i + 16].try_into().unwrap());
+        if t == type_ as u64 {
+            return v as c_ulong;
+        }
+        i += 16;
+    }
+    set_errno(Errno(libc::ENOENT));
+    0
+}
 
 #[cfg(not(target_os = "wasi"))]
 #[no_mangle]

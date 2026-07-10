@@ -9,4 +9,8 @@ rustflags = [
     "-C", "link-arg=-nodefaultlibs",
     "-C", "link-arg=-Wl,--export-dynamic",
     "-C", "link-arg=-Wl,-soname,libc.so.6",
+    # first definition wins (rustc orders dependents first): c-scape's full
+    # getauxval shadows origin's few-types shim, which shares a CGU with
+    # origin's always-linked entry code. see PATCHES.md.
+    "-C", "link-arg=-Wl,--allow-multiple-definition",
 ]

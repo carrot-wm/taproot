@@ -57,6 +57,8 @@ mod atoi;
 mod base64;
 mod brk;
 mod ctype;
+#[cfg(any(target_os = "android", target_os = "linux"))]
+mod dl;
 mod env;
 mod errno_;
 mod error;

@@ -1,8 +1,4 @@
 #[no_mangle]
-unsafe extern "C" fn dladdr() {
-    todo!("dladdr")
-}
-#[no_mangle]
 unsafe extern "C" fn dlclose() {
     todo!("dlclose")
 }

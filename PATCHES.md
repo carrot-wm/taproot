@@ -11,7 +11,9 @@ crate (a workspace member that builds `libc.so.6`).
 | `c-scape/src/lib.rs` | add `#![no_builtins]` | LLVM loop-idiom recognition compiles `strcpy`/`strcat` down to `mov %rdi,%rax; ret` (no-op) in a cdylib/LTO build; `no_builtins` forbids it. |
 | `c-scape/src/io/mod.rs` | `ioctl` forwards unrecognized requests to the kernel (rustix generic `Ioctl`, via `next_arg`) with errno, instead of `panic!` | GPU drivers issue almost exclusively custom ioctls. |
 | `c-scape/src/stdio/chk.rs` | `__*printf_chk` ignore the fortify flag instead of `unimplemented!()` | All of NixOS compiles `_FORTIFY_SOURCE=2`. |
-| `c-scape/src/process_.rs` | `page_size()` falls back to 4 KiB when `rustix::param::page_size()` is 0; removed the main-exe-only `dl_iterate_phdr` | A dlopened libc never runs origin's `_start`, so the auxv page-size cache is empty (div-by-zero in `get_phys_pages`). The `taproot/` cdylib provides a `/proc/self/maps` `dl_iterate_phdr` reporting **all** loaded objects (Mesa needs the driver build-id). |
+| `c-scape/src/process_.rs` | `page_size()` falls back to 4 KiB when `rustix::param::page_size()` is 0; removed the main-exe-only `dl_iterate_phdr` | A dlopened libc never runs origin's `_start`, so the auxv page-size cache is empty (div-by-zero in `get_phys_pages`). |
+| `c-scape/src/dl.rs` (new) | `dladdr` + `dl_iterate_phdr` reconstructed from `/proc/self/maps`, reporting **all** loaded objects | there is no dynamic linker to ask: the main program may be a static-PIE and other objects arrive via an external loader. Mesa walks `dl_iterate_phdr` for the driver build-id; `std`'s backtrace and the `unwinding` crate reference it from any eyra binary (a binary linking c-scape without it doesn't link). Was in the `taproot/` cdylib; moved into c-scape so binaries get it too. |
+| `c-scape/src/process_.rs` | full `getauxval` + `__getauxval` read from `/proc/self/auxv`; unknown/absent types return 0 with `ENOENT` | origin's shim recognizes only HWCAP/HWCAP2/MINSIGSTKSZ and `todo!()`-panics on the rest - `getauxval(AT_SECURE)` (secure_getenv semantics, e.g. the `secure-execution` crate) aborts any eyra binary. `/proc/self/auxv` also works in a dlopened `libc.so.6`, where origin's captured auxv never exists. NOTE: origin still defines `getauxval` (same CGU as its entry code), so a binary linking both needs `-Wl,--allow-multiple-definition` (rustc orders c-scape first); the upstreamable fix is origin returning 0 for unrecognized types. |
 | `c-scape/src/malloc/mod.rs` | `valloc`/`pvalloc` use the same page-size fallback | same auxv issue |
 | `c-scape/src/thread/mutex.rs` | `pthread_condattr_setclock` no longer prints an "unimplemented" warning | it already returned success; just noise |
 
@@ -21,4 +23,9 @@ Built on the fork's pinned **`nightly-2026-06-11`** (`rust-toolchain.toml`, or t
 so c-scape's `ioctl` and the cdylib's `scanf.rs` use `next_arg`.
 
 ## Build
-`cd taproot && nix develop -c cargo build --release` -> `target/x86_64-unknown-linux-gnu/release/libtaproot.so` (soname `libc.so.6`, no `NEEDED`, no `PT_INTERP`). Copy to `libc.so.6`/`libm.so.6` at point of use (dlopen matches by filename).
+From the **`taproot/` member directory** (cargo reads `.cargo/config.toml` from the
+cwd, so building with `-p taproot` from the workspace root silently drops the
+soname/`--export-dynamic`/`-nodefaultlibs` flags and emits a broken `.so` under
+`target/release/deps/`):
+
+`cd taproot && nix develop .. -c cargo build --release` -> `../target/x86_64-unknown-linux-gnu/release/libtaproot.so` (soname `libc.so.6`, no `NEEDED`, no `PT_INTERP`). Copy to `libc.so.6`/`libm.so.6` at point of use (dlopen matches by filename).

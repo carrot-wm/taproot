@@ -181,8 +181,6 @@ unsafe extern "C" fn setjmp(env: jmp_buf) -> c_int {
     }
 }
 
-core::arch::global_asm!(".globl _setjmp", ".set _setjmp, setjmp");
-
 #[no_mangle]
 #[cfg_attr(
     any(
@@ -348,8 +346,6 @@ unsafe extern "C" fn longjmp(env: jmp_buf, val: c_int) -> ! {
     }
 }
 
-core::arch::global_asm!(".globl _longjmp", ".set _longjmp, longjmp");
-
 #[no_mangle]
 #[cfg_attr(
     any(
@@ -434,7 +430,59 @@ unsafe extern "C" fn sigsetjmp(_env: sigjmp_buf, _savesigs: c_int) -> c_int {
     }
 }
 
-core::arch::global_asm!(".globl __sigsetjmp", ".set __sigsetjmp, sigsetjmp");
+// taproot: the upstream `.set` aliases (`_setjmp`, `_longjmp`, `__sigsetjmp`)
+// never reach a cdylib's .dynsym - rustc's version script exports only the
+// `#[no_mangle]` items it knows, demoting assembler symbols to local. glibc
+// headers make every caller import the alias names (`setjmp` is a macro for
+// `_setjmp`, `sigsetjmp` for `__sigsetjmp`, and `_FORTIFY_SOURCE` turns
+// `longjmp` into `__longjmp_chk`), so mesa's spirv-to-nir error handling hit
+// an unresolved PLT slot. Real exported trampolines instead; `__longjmp_chk`
+// skips the frame check like the `__*printf_chk` family skips the flag.
+macro_rules! jmp_alias {
+    ($alias:ident => $target:ident, ($($arg:ident: $ty:ty),*) -> $ret:ty) => {
+        #[no_mangle]
+        #[cfg_attr(
+            any(
+                target_arch = "aarch64",
+                target_arch = "riscv64",
+                target_arch = "x86_64",
+                target_arch = "x86"
+            ),
+            unsafe(naked)
+        )]
+        unsafe extern "C" fn $alias($($arg: $ty),*) -> $ret {
+            #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
+            {
+                naked_asm!("jmp {target}", target = sym $target)
+            }
+
+            #[cfg(target_arch = "aarch64")]
+            {
+                naked_asm!("b {target}", target = sym $target)
+            }
+
+            #[cfg(target_arch = "riscv64")]
+            {
+                naked_asm!("tail {target}", target = sym $target)
+            }
+
+            #[cfg(not(any(
+                target_arch = "aarch64",
+                target_arch = "riscv64",
+                target_arch = "x86_64",
+                target_arch = "x86"
+            )))]
+            {
+                unsafe { $target($($arg),*) }
+            }
+        }
+    };
+}
+
+jmp_alias!(_setjmp => setjmp, (env: jmp_buf) -> c_int);
+jmp_alias!(_longjmp => longjmp, (env: jmp_buf, val: c_int) -> !);
+jmp_alias!(__longjmp_chk => longjmp, (env: jmp_buf, val: c_int) -> !);
+jmp_alias!(__sigsetjmp => sigsetjmp, (env: sigjmp_buf, savesigs: c_int) -> c_int);
 
 // The offset from the start of `jmp_buf` to memory that `setjmp` does not
 // store to, so `sigsetjmp` can store to it.

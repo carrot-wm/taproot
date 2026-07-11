@@ -265,7 +265,11 @@ unsafe extern "C" fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c
             // Let's just say we don't support this for now.
             b"__pthread_get_minstack" => null_mut(),
 
-            _ => unimplemented!("dlsym(_, {:?})", symbol),
+            // taproot: a probe for a symbol we don't have answers null -
+            // that is the dlsym contract, and probing callers have fallback
+            // paths by construction. panicking here took the compositor down
+            // when a mesa update probed __epoll_pwait2_time64.
+            _ => null_mut(),
         }
     } else if handle == libc::RTLD_NEXT {
         // We don't support any dynamic linking, so there's no "next" dynamic

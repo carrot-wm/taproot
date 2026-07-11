@@ -10,10 +10,8 @@ use libc::c_int;
 unsafe extern "C" fn pthread_exit() -> c_int {
     todo!("pthread_exit")
 }
-#[no_mangle]
-unsafe extern "C" fn pthread_cancel() -> c_int {
-    todo!("pthread_cancel")
-}
+// taproot: pthread_cancel/pthread_setcanceltype moved to thread/mod.rs as
+// contract stubs
 #[no_mangle]
 unsafe extern "C" fn __pthread_register_cancel() {
     todo!("__pthread_register_cancel")
@@ -33,10 +31,6 @@ unsafe extern "C" fn pthread_cleanup_pop() -> c_int {
 #[no_mangle]
 unsafe extern "C" fn pthread_setcancelstate() -> c_int {
     todo!("pthread_setcancelstate")
-}
-#[no_mangle]
-unsafe extern "C" fn pthread_setcanceltype() -> c_int {
-    todo!("pthread_setcanceltype")
 }
 #[no_mangle]
 unsafe extern "C" fn pthread_testcancel() -> c_int {

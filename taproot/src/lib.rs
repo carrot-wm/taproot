@@ -46,15 +46,20 @@ unsafe extern "C" fn open_memstream(_p: *mut *mut c_char, _n: *mut usize) -> *mu
 // getline/getdelim/__getdelim live in `gap.rs` - a real fgetc-based impl
 
 // -- glibc data globals the driver closure binds eagerly (R_X86_64_GLOB_DAT) --
-// These are the only *strong* undefined data symbols across the Mesa Vulkan ICD
-// closure that c-gull doesn't define; every other gap symbol is either weak
-// (the loader fills weak-undef with 0) or a PLT function (bound lazily / only if
-// actually called). libudev and libc error paths read the program-name pair for
-// diagnostics; __libc_single_threaded gates fast-path lock elision - pin it to 0
-// (multi-threaded) so nothing skips locking under Mesa's worker threads.
+// libudev and libc error paths read the program-name pair (in both its BSD and
+// GNU spellings) for diagnostics; __libc_single_threaded gates fast-path lock
+// elision - pin it to 0 (multi-threaded) so nothing skips locking under Mesa's
+// worker threads. Unresolved PLT *functions* are NOT harmless in the eager
+// path: elf_loader skips them silently and the first call jumps to an
+// unmapped link-time address (that was the _setjmp crash) - the function-side
+// gaps live in c-scape, not here.
 #[unsafe(no_mangle)]
 static mut program_invocation_name: *const c_char = c"carrot".as_ptr();
 #[unsafe(no_mangle)]
 static mut program_invocation_short_name: *const c_char = c"carrot".as_ptr();
+#[unsafe(no_mangle)]
+static mut __progname: *const c_char = c"carrot".as_ptr();
+#[unsafe(no_mangle)]
+static mut __progname_full: *const c_char = c"carrot".as_ptr();
 #[unsafe(no_mangle)]
 static mut __libc_single_threaded: c_char = 0;

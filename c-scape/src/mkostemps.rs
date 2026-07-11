@@ -28,9 +28,24 @@ unsafe extern "C" fn mkostemp(template: *mut c_char, flags: c_int) -> c_int {
     mkostemps(template, 0, flags)
 }
 
+// taproot: the LFS spellings; mesa's disk cache creates entries through them
+#[no_mangle]
+unsafe extern "C" fn mkostemp64(template: *mut c_char, flags: c_int) -> c_int {
+    //libc!(libc::mkostemp64(template, flags));
+
+    mkostemps(template, 0, flags)
+}
+
 #[no_mangle]
 unsafe extern "C" fn mkstemps(template: *mut c_char, suffixlen: c_int) -> c_int {
     libc!(libc::mkstemps(template, suffixlen));
+
+    mkostemps(template, suffixlen, 0)
+}
+
+#[no_mangle]
+unsafe extern "C" fn mkstemps64(template: *mut c_char, suffixlen: c_int) -> c_int {
+    //libc!(libc::mkstemps64(template, suffixlen));
 
     mkostemps(template, suffixlen, 0)
 }

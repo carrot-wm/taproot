@@ -138,7 +138,7 @@ unsafe extern "C" fn readdir(dir: *mut libc::DIR) -> *mut libc::dirent {
     }
 }
 
-#[cfg(feature = "todo")]
+// taproot: real impl, ungated from the `todo` stubs feature
 #[no_mangle]
 unsafe extern "C" fn rewinddir(dir: *mut libc::DIR) {
     libc!(libc::rewinddir(dir));

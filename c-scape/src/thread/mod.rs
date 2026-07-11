@@ -325,6 +325,28 @@ unsafe extern "C" fn pthread_equal(a: libc::pthread_t, b: libc::pthread_t) -> c_
     i32::from(a == b)
 }
 
+// taproot: cancellation is not supported - `pthread_cancel` answers ENOSYS
+// (callers must handle the thread never being cancelled), and the type/state
+// setters succeed as no-ops since no cancellation can ever be delivered.
+
+#[no_mangle]
+unsafe extern "C" fn pthread_cancel(_pthread: PthreadT) -> c_int {
+    libc::ENOSYS
+}
+
+#[no_mangle]
+unsafe extern "C" fn pthread_setcanceltype(type_: c_int, oldtype: *mut c_int) -> c_int {
+    const PTHREAD_CANCEL_DEFERRED: c_int = 0;
+    const PTHREAD_CANCEL_ASYNCHRONOUS: c_int = 1;
+    if type_ != PTHREAD_CANCEL_DEFERRED && type_ != PTHREAD_CANCEL_ASYNCHRONOUS {
+        return libc::EINVAL;
+    }
+    if !oldtype.is_null() {
+        *oldtype = PTHREAD_CANCEL_DEFERRED;
+    }
+    0
+}
+
 #[no_mangle]
 unsafe extern "C" fn pthread_sigmask(
     how: c_int,

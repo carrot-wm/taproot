@@ -101,6 +101,7 @@ mod stdio;
 mod strtod;
 mod strtol;
 mod syscall;
+mod syslog;
 mod system;
 mod termios_;
 #[cfg(feature = "thread")]

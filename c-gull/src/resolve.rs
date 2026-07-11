@@ -75,7 +75,7 @@ unsafe extern "C" fn getaddrinfo(
             0 => 0,
             libc::SOCK_STREAM => libc::IPPROTO_TCP,
             libc::SOCK_DGRAM => libc::IPPROTO_UDP,
-            _ => todo!("unimplemented GAI protocol {}", prototype.ai_protocol),
+            _ => return libc::EAI_SOCKTYPE,
         };
     }
 
@@ -310,7 +310,10 @@ fn resolve_host(host: &str, prototype: &libc::addrinfo) -> Result<IntoIter<IpAdd
 
             return Err(libc::EAI_NONAME);
         }
-        Some(r) => panic!("unexpected exit status from `getent ahosts`: {}", r),
+        Some(_) => {
+            set_errno(Errno(libc::EIO));
+            return Err(libc::EAI_SYSTEM);
+        }
         None => {
             set_errno(Errno(libc::EIO));
             return Err(libc::EAI_SYSTEM);
@@ -353,7 +356,7 @@ fn resolve_host(host: &str, prototype: &libc::addrinfo) -> Result<IntoIter<IpAdd
                 libc::SOCK_STREAM => "STREAM",
                 libc::SOCK_DGRAM => "DGRAM",
                 libc::SOCK_RAW => "RAW",
-                _ => panic!("unsupported ai_socktype {:?}", prototype.ai_socktype),
+                _ => return Err(libc::EAI_SOCKTYPE),
             };
             if type_ != socktype_name {
                 continue;
@@ -489,7 +492,7 @@ unsafe extern "C" fn gai_strerror(errcode: c_int) -> *const c_char {
         libc::EAI_BADFLAGS => c"Invalid flags",
         libc::EAI_SERVICE => c"Unrecognized service",
         EAI_ADDRFAMILY => c"Hostname has no addresses in address family",
-        _ => panic!("unrecognized gai_strerror {:?}", errcode),
+        _ => c"Unknown error",
     }
     .as_ptr()
 }

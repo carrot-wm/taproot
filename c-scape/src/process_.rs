@@ -110,7 +110,11 @@ unsafe fn _sysconf(name: c_int) -> c_long {
 
         libc::_SC_THREAD_STACK_MIN => libc::PTHREAD_STACK_MIN as _,
 
-        _ => panic!("unrecognized sysconf({})", name),
+        // taproot: unknown keys answer per contract, they must not abort
+        _ => {
+            set_errno(Errno(libc::EINVAL));
+            -1
+        }
     }
 }
 
@@ -165,7 +169,10 @@ fn _pathconf(name: c_int) -> c_long {
         libc::_PC_PATH_MAX => libc::PATH_MAX as _,
         #[cfg(any(target_os = "android", target_os = "linux"))]
         libc::_PC_NAME_MAX => 255,
-        _ => panic!("unrecognized pathconf({})", name),
+        _ => {
+            set_errno(Errno(libc::EINVAL));
+            -1
+        }
     }
 }
 
@@ -276,7 +283,7 @@ unsafe extern "C" fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c
         // library.
         null_mut()
     } else {
-        unimplemented!("dlsym with a handle")
+        null_mut()
     }
 }
 
@@ -450,6 +457,9 @@ unsafe extern "C" fn prctl(
                 None => -1,
             }
         }
-        _ => unimplemented!("unrecognized prctl op {}", option),
+        _ => {
+            set_errno(Errno(libc::EINVAL));
+            -1
+        }
     }
 }

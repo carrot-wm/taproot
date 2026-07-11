@@ -39,7 +39,8 @@ unsafe extern "C" fn getgroups(num: c_int, groups: *mut libc::gid_t) -> c_int {
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
 #[no_mangle]
-unsafe extern "C" fn setgroups() {
+unsafe extern "C" fn setgroups() -> libc::c_int {
     //libc!(libc::setgroups());
-    todo!("setgroups")
+    errno::set_errno(errno::Errno(libc::ENOSYS));
+    -1
 }

@@ -303,7 +303,10 @@ unsafe extern "C" fn getsockopt(
                 optlen,
             ),
             libc::SO_PEERCRED => write_ucred(sockopt::socket_peercred(fd), optval, optlen),
-            _ => unimplemented!("unimplemented getsockopt SOL_SOCKET optname {:?}", optname),
+            _ => {
+            errno::set_errno(errno::Errno(libc::ENOPROTOOPT));
+            return -1;
+        }
         },
         libc::IPPROTO_IP => match optname {
             libc::IP_TTL => write_i32(sockopt::ip_ttl(fd).map(|ttl| ttl as i32), optval, optlen),
@@ -327,7 +330,10 @@ unsafe extern "C" fn getsockopt(
                 }
                 Err(err) => Err(err),
             },
-            _ => unimplemented!("unimplemented getsockopt IPPROTO_IP optname {:?}", optname),
+            _ => {
+            errno::set_errno(errno::Errno(libc::ENOPROTOOPT));
+            return -1;
+        }
         },
         libc::IPPROTO_IPV6 => match optname {
             libc::IPV6_MULTICAST_LOOP => {
@@ -357,10 +363,10 @@ unsafe extern "C" fn getsockopt(
                 optval,
                 optlen,
             ),
-            _ => unimplemented!(
-                "unimplemented getsockopt IPPROTO_IPV6 optname {:?}",
-                optname
-            ),
+            _ => {
+            errno::set_errno(errno::Errno(libc::ENOPROTOOPT));
+            return -1;
+        }
         },
         libc::IPPROTO_TCP => match optname {
             libc::TCP_NODELAY => write_bool(sockopt::tcp_nodelay(fd), optval, optlen),
@@ -396,13 +402,15 @@ unsafe extern "C" fn getsockopt(
                 write_bool(sockopt::tcp_thin_linear_timeouts(fd), optval, optlen)
             }
             libc::TCP_CORK => write_bool(sockopt::tcp_cork(fd), optval, optlen),
-            _ => unimplemented!("unimplemented getsockopt IPPROTO_TCP optname {:?}", optname),
+            _ => {
+            errno::set_errno(errno::Errno(libc::ENOPROTOOPT));
+            return -1;
+        }
         },
-        _ => unimplemented!(
-            "unimplemented getsockopt level {:?} optname {:?}",
-            level,
-            optname
-        ),
+        _ => {
+            errno::set_errno(errno::Errno(libc::ENOPROTOOPT));
+            return -1;
+        }
     };
     match convert_res(result) {
         Some(()) => 0,
@@ -517,7 +525,10 @@ unsafe extern "C" fn setsockopt(
             libc::SO_OOBINLINE => sockopt::set_socket_oobinline(fd, read_bool(optval, optlen)),
             libc::SO_REUSEPORT => sockopt::set_socket_reuseport(fd, read_bool(optval, optlen)),
             libc::SO_INCOMING_CPU => sockopt::set_socket_incoming_cpu(fd, read_u32(optval, optlen)),
-            _ => unimplemented!("unimplemented setsockopt SOL_SOCKET optname {:?}", optname),
+            _ => {
+            errno::set_errno(errno::Errno(libc::ENOPROTOOPT));
+            return -1;
+        }
         },
         libc::IPPROTO_IP => match optname {
             libc::IP_TTL => sockopt::set_ip_ttl(fd, read_i32(optval, optlen) as u32),
@@ -582,7 +593,10 @@ unsafe extern "C" fn setsockopt(
             }
             libc::IP_RECVTOS => sockopt::set_ip_recvtos(fd, read_bool(optval, optlen)),
             libc::IP_FREEBIND => sockopt::set_ip_freebind(fd, read_bool(optval, optlen)),
-            _ => unimplemented!("unimplemented setsockopt IPPROTO_IP optname {:?}", optname),
+            _ => {
+            errno::set_errno(errno::Errno(libc::ENOPROTOOPT));
+            return -1;
+        }
         },
         libc::IPPROTO_IPV6 => match optname {
             libc::IPV6_MULTICAST_LOOP => {
@@ -617,10 +631,10 @@ unsafe extern "C" fn setsockopt(
             libc::IPV6_RECVTCLASS => sockopt::set_ipv6_recvtclass(fd, read_bool(optval, optlen)),
             libc::IPV6_FREEBIND => sockopt::set_ipv6_freebind(fd, read_bool(optval, optlen)),
             libc::IPV6_TCLASS => sockopt::set_ipv6_tclass(fd, read_u32(optval, optlen)),
-            _ => unimplemented!(
-                "unimplemented setsockopt IPPROTO_IPV6 optname {:?}",
-                optname
-            ),
+            _ => {
+            errno::set_errno(errno::Errno(libc::ENOPROTOOPT));
+            return -1;
+        }
         },
         libc::IPPROTO_TCP => match optname {
             libc::TCP_NODELAY => sockopt::set_tcp_nodelay(fd, read_bool(optval, optlen)),
@@ -662,13 +676,15 @@ unsafe extern "C" fn setsockopt(
                 sockopt::set_tcp_thin_linear_timeouts(fd, read_bool(optval, optlen))
             }
             libc::TCP_CORK => sockopt::set_tcp_cork(fd, read_bool(optval, optlen)),
-            _ => unimplemented!("unimplemented setsockopt IPPROTO_TCP optname {:?}", optname),
+            _ => {
+            errno::set_errno(errno::Errno(libc::ENOPROTOOPT));
+            return -1;
+        }
         },
-        _ => unimplemented!(
-            "unimplemented setsockopt level {:?} optname {:?}",
-            level,
-            optname
-        ),
+        _ => {
+            errno::set_errno(errno::Errno(libc::ENOPROTOOPT));
+            return -1;
+        }
     };
     match convert_res(result) {
         Some(()) => 0,

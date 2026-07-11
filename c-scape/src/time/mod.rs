@@ -37,7 +37,10 @@ unsafe extern "C" fn clock_gettime(id: c_int, tp: *mut libc::timespec) -> c_int 
         libc::CLOCK_THREAD_CPUTIME_ID => {
             rustix::time::DynamicClockId::Known(rustix::time::ClockId::ThreadCPUTime)
         }
-        _ => panic!("unimplemented clock_gettime({})", id),
+        _ => {
+            errno::set_errno(errno::Errno(libc::EINVAL));
+            return -1;
+        }
     };
 
     let rustix_time = match convert_res(rustix::time::clock_gettime_dynamic(id)) {
@@ -64,7 +67,10 @@ unsafe extern "C" fn clock_getres(id: c_int, tp: *mut libc::timespec) -> c_int {
     let id = match id {
         libc::CLOCK_MONOTONIC => rustix::time::ClockId::Monotonic,
         libc::CLOCK_REALTIME => rustix::time::ClockId::Realtime,
-        _ => panic!("unimplemented clock_getres({})", id),
+        _ => {
+            errno::set_errno(errno::Errno(libc::EINVAL));
+            return -1;
+        }
     };
 
     let rustix_time = rustix::time::clock_getres(id);
@@ -248,7 +254,10 @@ unsafe extern "C" fn clock_settime(id: c_int, tp: *mut libc::timespec) -> c_int 
     let id = match id {
         libc::CLOCK_MONOTONIC => rustix::time::ClockId::Monotonic,
         libc::CLOCK_REALTIME => rustix::time::ClockId::Realtime,
-        _ => panic!("unimplemented clock({})", id),
+        _ => {
+            errno::set_errno(errno::Errno(libc::EINVAL));
+            return -1;
+        }
     };
 
     let timespec = rustix::time::Timespec {

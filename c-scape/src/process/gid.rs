@@ -13,5 +13,6 @@ unsafe extern "C" fn setgid(_gid: gid_t) -> c_int {
     // rustix has a `set_thread_gid` function, but it just wraps the Linux
     // syscall which sets a per-thread GID rather than the whole process GID.
     // Linux expects libc's to have logic to set the GID for all the threads.
-    todo!("setgid")
+    errno::set_errno(errno::Errno(libc::ENOSYS));
+    -1
 }

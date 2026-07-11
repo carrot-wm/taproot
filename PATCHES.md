@@ -2,9 +2,11 @@
 
 taproot is a maintained fork of **c-ward** (github.com/sunfishcode/c-ward). Every
 edit below is marked `// taproot:` in-source and sits on top of the fork's base
-commit; `git log` and a diff against that parent show them exactly. c-gull is
-unmodified - all changes are in **c-scape**, plus the new **`taproot/`** cdylib
-crate (a workspace member that builds `libc.so.6`).
+commit; `git log` and a diff against that parent show them exactly. Most edits
+are in **c-scape** plus the new **`taproot/`** cdylib crate (a workspace member
+that builds `libc.so.6`); the errno sweep below also touches c-gull's resolver
+and nss. Point edits carry `// taproot:` markers; the sweep sites are listed by
+their commit instead.
 
 | File | Change | Why |
 |------|--------|-----|
@@ -17,6 +19,7 @@ crate (a workspace member that builds `libc.so.6`).
 | `c-scape/src/process_.rs` | `dlsym(RTLD_DEFAULT, ..)` answers unknown probe symbols with null instead of `unimplemented!()` | that is the dlsym contract, and probing callers have fallbacks by construction - a mesa update probing `__epoll_pwait2_time64` aborted the whole compositor. |
 | `c-scape/src/malloc/mod.rs` | `valloc`/`pvalloc` use the same page-size fallback | same auxv issue |
 | `c-scape/src/thread/mutex.rs` | `pthread_condattr_setclock` no longer prints an "unimplemented" warning | it already returned success; just noise |
+| errno sweep (one commit): `c-scape` time, fcntl, net sockopts, pthread mutex kinds, sysconf/pathconf/prctl, dlsym-with-handle, setuid/setgid/setgroups, posix_spawn stubs; `c-gull` resolve + nss | every C-ABI dispatch fallthrough answers its contract error (EINVAL, ENOPROTOOPT, ENOSYS, EAI_*, null, or the site's own failure arm) instead of `unimplemented!()`/`todo!()`/`panic!()` | a libc that aborts the process on an unknown input is a compositor-killer: three separate mesa/kbvm probes have taken the session down this way (`__printf_chk`, `getauxval(AT_SECURE)`, `dlsym(__epoll_pwait2_time64)`). Kept as real panics: hex-float `strtod`, `longjmp`, `___tls_get_addr`, internal invariants - places where a silently wrong answer beats nothing. |
 
 ## Toolchain
 Built on the fork's pinned **`nightly-2026-06-11`** (`rust-toolchain.toml`, or the

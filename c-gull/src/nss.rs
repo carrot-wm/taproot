@@ -102,7 +102,7 @@ unsafe fn getpw_r(
     match output.status.code() {
         Some(0) => {}
         Some(2) => return success(result.cast(), null_mut()),
-        Some(r) => panic!("unexpected exit status from `getent passwd`: {}", r),
+        Some(_) => return parse_error(result.cast()),
         None => return parse_error(result.cast()),
     }
 
@@ -236,7 +236,7 @@ unsafe fn getgr_r(
     match output.status.code() {
         Some(0) => {}
         Some(2) => return success(result.cast(), null_mut()),
-        Some(r) => panic!("unexpected exit status from `getent group`: {}", r),
+        Some(_) => return parse_error(result.cast()),
         None => return parse_error(result.cast()),
     }
 
@@ -573,7 +573,7 @@ unsafe extern "C" fn getgrouplist(
 
     match output.status.code() {
         Some(0) => {}
-        Some(r) => panic!("unexpected exit status from `getent initgroups`: {}", r),
+        Some(_) => return -1,
         None => return -1,
     }
 
@@ -695,7 +695,10 @@ unsafe fn getserv_r(
             *result = null_mut();
             return libc::ENOENT;
         }
-        Some(r) => panic!("unexpected exit status from `getent services`: {}", r),
+        Some(_) => {
+            *result = null_mut();
+            return libc::EIO;
+        }
         None => {
             *result = null_mut();
             return libc::EIO;

@@ -89,8 +89,8 @@ unsafe extern "C" fn pthread_mutex_destroy(mutex: *mut PthreadMutexT) -> c_int {
     match (*mutex).kind.load(Ordering::SeqCst) as i32 {
         libc::PTHREAD_MUTEX_NORMAL => ManuallyDrop::drop(&mut (*mutex).u.normal),
         libc::PTHREAD_MUTEX_RECURSIVE => ManuallyDrop::drop(&mut (*mutex).u.reentrant),
-        libc::PTHREAD_MUTEX_ERRORCHECK => todo!("PTHREAD_MUTEX_ERRORCHECK"),
-        other => unimplemented!("unsupported pthread mutex kind {}", other),
+        libc::PTHREAD_MUTEX_ERRORCHECK => return libc::EINVAL,
+        _ => return libc::EINVAL,
     }
     (*mutex).kind.store(!0, Ordering::SeqCst);
     0
@@ -119,8 +119,8 @@ unsafe extern "C" fn pthread_mutex_init(
             &mut (*mutex).u.reentrant,
             ManuallyDrop::new(RawReentrantMutex::INIT),
         ),
-        libc::PTHREAD_MUTEX_ERRORCHECK => todo!("PTHREAD_MUTEX_ERRORCHECK"),
-        other => unimplemented!("unsupported pthread mutex kind {}", other),
+        libc::PTHREAD_MUTEX_ERRORCHECK => return libc::EINVAL,
+        _ => return libc::EINVAL,
     }
     (*mutex).kind.store(kind, Ordering::SeqCst);
     0
@@ -132,8 +132,8 @@ unsafe extern "C" fn pthread_mutex_lock(mutex: *mut PthreadMutexT) -> c_int {
     match (*mutex).kind.load(Ordering::SeqCst) as i32 {
         libc::PTHREAD_MUTEX_NORMAL => (*mutex).u.normal.lock(),
         libc::PTHREAD_MUTEX_RECURSIVE => (*mutex).u.reentrant.lock(),
-        libc::PTHREAD_MUTEX_ERRORCHECK => todo!("PTHREAD_MUTEX_ERRORCHECK"),
-        other => unimplemented!("unsupported pthread mutex kind {}", other),
+        libc::PTHREAD_MUTEX_ERRORCHECK => return libc::EINVAL,
+        _ => return libc::EINVAL,
     }
     0
 }
@@ -144,8 +144,8 @@ unsafe extern "C" fn pthread_mutex_trylock(mutex: *mut PthreadMutexT) -> c_int {
     if match (*mutex).kind.load(Ordering::SeqCst) as i32 {
         libc::PTHREAD_MUTEX_NORMAL => (*mutex).u.normal.try_lock(),
         libc::PTHREAD_MUTEX_RECURSIVE => (*mutex).u.reentrant.try_lock(),
-        libc::PTHREAD_MUTEX_ERRORCHECK => todo!("PTHREAD_MUTEX_ERRORCHECK"),
-        other => unimplemented!("unsupported pthread mutex kind {}", other),
+        libc::PTHREAD_MUTEX_ERRORCHECK => return libc::EINVAL,
+        _ => return libc::EINVAL,
     } {
         0
     } else {
@@ -171,8 +171,8 @@ unsafe extern "C" fn pthread_mutex_unlock(mutex: *mut PthreadMutexT) -> c_int {
             }
             mutex.u.reentrant.unlock()
         }
-        libc::PTHREAD_MUTEX_ERRORCHECK => todo!("PTHREAD_MUTEX_ERRORCHECK"),
-        other => unimplemented!("unsupported pthread mutex kind {}", other),
+        libc::PTHREAD_MUTEX_ERRORCHECK => return libc::EINVAL,
+        _ => return libc::EINVAL,
     }
     0
 }
@@ -303,9 +303,9 @@ unsafe extern "C" fn pthread_cond_wait(cond: *mut PthreadCondT, lock: *mut Pthre
     ));
     match (*lock).kind.load(Ordering::SeqCst) as i32 {
         libc::PTHREAD_MUTEX_NORMAL => (*cond).inner.wait(&(*lock).u.normal),
-        libc::PTHREAD_MUTEX_RECURSIVE => todo!("PTHREAD_MUTEX_RECURSIVE"),
-        libc::PTHREAD_MUTEX_ERRORCHECK => todo!("PTHREAD_MUTEX_ERRORCHECK"),
-        other => unimplemented!("unsupported pthread mutex kind {}", other),
+        libc::PTHREAD_MUTEX_RECURSIVE => return libc::EINVAL,
+        libc::PTHREAD_MUTEX_ERRORCHECK => return libc::EINVAL,
+        _ => return libc::EINVAL,
     }
     0
 }
@@ -340,8 +340,8 @@ unsafe extern "C" fn pthread_cond_timedwait(
                 libc::ETIMEDOUT
             }
         }
-        libc::PTHREAD_MUTEX_RECURSIVE => todo!("PTHREAD_MUTEX_RECURSIVE"),
-        libc::PTHREAD_MUTEX_ERRORCHECK => todo!("PTHREAD_MUTEX_ERRORCHECK"),
-        other => unimplemented!("unsupported pthread mutex kind {}", other),
+        libc::PTHREAD_MUTEX_RECURSIVE => return libc::EINVAL,
+        libc::PTHREAD_MUTEX_ERRORCHECK => return libc::EINVAL,
+        _ => return libc::EINVAL,
     }
 }

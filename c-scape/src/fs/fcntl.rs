@@ -104,7 +104,10 @@ unsafe fn _fcntl<FlockTy: Flock>(fd: c_int, cmd: c_int, mut args: VaList<'_>) ->
                 None => -1,
             }
         }
-        _ => todo!("unimplemented fnctl({})", cmd),
+        _ => {
+            errno::set_errno(errno::Errno(libc::EINVAL));
+            -1
+        }
     }
 }
 

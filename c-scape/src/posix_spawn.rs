@@ -2,9 +2,9 @@ use libc::{c_int, c_void};
 
 #[cfg(not(target_os = "wasi"))]
 #[no_mangle]
-unsafe extern "C" fn posix_spawnp() {
+unsafe extern "C" fn posix_spawnp() -> c_int {
     //libc!(libc::posix_spawnp());
-    todo!("posix_spawnp");
+    libc::ENOSYS
 }
 
 #[cfg(not(target_os = "wasi"))]
@@ -33,44 +33,44 @@ unsafe extern "C" fn posix_spawnattr_init(_ptr: *const c_void) -> c_int {
 
 #[cfg(not(target_os = "wasi"))]
 #[no_mangle]
-unsafe extern "C" fn posix_spawnattr_setflags() {
+unsafe extern "C" fn posix_spawnattr_setflags() -> c_int {
     //libc!(libc::posix_spawnattr_setflags());
-    unimplemented!("posix_spawnattr_setflags")
+    libc::ENOSYS
 }
 
 #[cfg(not(target_os = "wasi"))]
 #[no_mangle]
-unsafe extern "C" fn posix_spawnattr_setsigdefault() {
+unsafe extern "C" fn posix_spawnattr_setsigdefault() -> c_int {
     //libc!(libc::posix_spawnattr_setsigdefault());
-    unimplemented!("posix_spawnattr_setsigdefault")
+    libc::ENOSYS
 }
 
 #[cfg(not(target_os = "wasi"))]
 #[no_mangle]
-unsafe extern "C" fn posix_spawnattr_setsigmask() {
+unsafe extern "C" fn posix_spawnattr_setsigmask() -> c_int {
     //libc!(libc::posix_spawnattr_setsigmask());
-    unimplemented!("posix_spawnsetsigmask")
+    libc::ENOSYS
 }
 
 #[cfg(not(target_os = "wasi"))]
 #[no_mangle]
 unsafe extern "C" fn posix_spawnattr_setpgroup(_ptr: *mut c_void, _pgroup: c_int) -> c_int {
     //libc!(libc::posix_spawnattr_setpgroup(ptr, pgroup));
-    unimplemented!("posix_spawnattr_setpgroup")
+    libc::ENOSYS
 }
 
 #[cfg(not(target_os = "wasi"))]
 #[no_mangle]
-unsafe extern "C" fn posix_spawn_file_actions_adddup2() {
+unsafe extern "C" fn posix_spawn_file_actions_adddup2() -> c_int {
     //libc!(libc::posix_spawn_file_actions_adddup2());
-    unimplemented!("posix_spawn_file_actions_adddup2")
+    libc::ENOSYS
 }
 
 #[cfg(not(target_os = "wasi"))]
 #[no_mangle]
-unsafe extern "C" fn posix_spawn_file_actions_addchdir_np() {
+unsafe extern "C" fn posix_spawn_file_actions_addchdir_np() -> c_int {
     //libc!(libc::posix_spawn_file_actions_addchdir_np());
-    unimplemented!("posix_spawn_file_actions_addchdir_np")
+    libc::ENOSYS
 }
 
 #[cfg(not(target_os = "wasi"))]

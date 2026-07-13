@@ -1,13 +1,13 @@
 [package]
-name = "c-gull"
+name = "taproot-c-gull"
 version = "0.22.3"
 authors = [
     "Dan Gohman <dev@sunfishcode.online>",
 ]
-description = "A libc implementation in Rust"
-documentation = "https://docs.rs/c-gull"
+description = "A libc implementation in Rust (c-gull fork for the taproot libc)"
+documentation = "https://docs.rs/taproot-c-gull"
 license = "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT"
-repository = "https://github.com/sunfishcode/c-ward"
+repository = "https://github.com/carrot-wm/taproot"
 edition = "2021"
 keywords = ["linux", "libc"]
 
@@ -15,7 +15,7 @@ keywords = ["linux", "libc"]
 # We use the libc crate for C ABI types and constants, but we don't depend on
 # the actual platform libc.
 libc = { version = "0.2.155", default-features = false }
-c-scape = { path = "../c-scape", version = "0.22.3", default-features = false }
+c-scape = { package = "taproot-c-scape", path = "../c-scape", version = "0.22.3", default-features = false }
 errno = { version = "0.3.3", default-features = false, optional = true }
 tz-rs = { version = "0.7.0", default-features = false, optional = true }
 rustix = { version = "1.0.0", default-features = false, optional = true, features = ["fs", "net", "param", "process", "rand", "termios", "thread", "time"] }

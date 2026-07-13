@@ -35,3 +35,4 @@ soname/`--export-dynamic`/`-nodefaultlibs` flags and emits a broken `.so` under
 `target/release/deps/`):
 
 `cd taproot && nix develop .. -c cargo build --release` -> `../target/x86_64-unknown-linux-gnu/release/libtaproot.so` (soname `libc.so.6`, no `NEEDED`, no `PT_INTERP`). Copy to `libc.so.6`/`libm.so.6` at point of use (dlopen matches by filename).
+| publish renames (one commit): crates become `taproot-c-scape`/`taproot-c-gull`, upstream `eyra` forked in-tree as `taproot-eyra` (deps rewired by `package =` rename, so no source changes), the `taproot` cdylib routes through the fork by path, workspace `[patch.crates-io]` retired | crates.io publishing - upstream owns the `c-scape`/`c-gull`/`eyra` names, registries reject git/path deps, and `[patch]` never propagates to registry consumers; a rename chain is the only shape that resolves end to end from crates.io |

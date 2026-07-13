@@ -2,13 +2,14 @@
 name = "taproot"
 version = "0.1.0"
 edition = "2021"
-publish = false
+description = "A standalone pure-Rust libc.so.6: eyra's origin + c-gull built as a cdylib"
+license = "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT"
+repository = "https://github.com/carrot-wm/taproot"
 
 [lib]
 name = "taproot"
 crate-type = ["cdylib"]
 
 [dependencies]
-# eyra pulls origin (startup) + c-gull (libc); the workspace root's
-# [patch.crates-io] routes c-gull/c-scape to the vendored fork members.
-eyra = "0.22"
+# eyra pulls origin (startup) + c-gull (libc), routed to the fork members
+eyra = { package = "taproot-eyra", path = "../eyra", version = "0.22.3" }

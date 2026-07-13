@@ -1,13 +1,13 @@
 [package]
-name = "c-scape"
+name = "taproot-c-scape"
 version = "0.22.3"
 authors = [
     "Dan Gohman <dev@sunfishcode.online>",
 ]
-description = "A libc bottom-half implementation in Rust"
-documentation = "https://docs.rs/c-scape"
+description = "A libc bottom-half implementation in Rust (c-scape fork for the taproot libc)"
+documentation = "https://docs.rs/taproot-c-scape"
 license = "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT"
-repository = "https://github.com/sunfishcode/c-ward"
+repository = "https://github.com/carrot-wm/taproot"
 edition = "2021"
 keywords = ["linux", "libc", "no_std"]
 categories = ["no-std"]

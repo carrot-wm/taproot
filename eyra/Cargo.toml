@@ -1,0 +1,35 @@
+[package]
+name = "taproot-eyra"
+version = "0.22.3"
+authors = [
+    "Dan Gohman <dev@sunfishcode.online>",
+]
+description = "Rust programs written entirely in Rust (eyra routed to the taproot libc fork)"
+documentation = "https://docs.rs/taproot-eyra"
+license = "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT"
+repository = "https://github.com/carrot-wm/taproot"
+edition = "2021"
+build = "build.rs"
+
+[dependencies]
+c-gull = { package = "taproot-c-gull", path = "../c-gull", version = "0.22.3", features = ["eyra"], default-features = false }
+
+# upstream eyra's surface, forwarded verbatim
+[features]
+default = ["be-std", "threadsafe-setenv"]
+be-std = ["std"]
+std = ["c-gull/std"]
+atomic-dbg-logger = ["c-gull/atomic-dbg-logger"]
+deprecated-and-unimplemented = ["c-gull/deprecated-and-unimplemented"]
+eh-personality = ["c-gull/eh-personality"]
+eh-personality-continue = ["c-gull/eh-personality-continue"]
+env_logger = ["c-gull/env_logger", "std"]
+experimental-relocate = ["c-gull/experimental-relocate"]
+extra-syscalls = ["c-gull/extra-syscalls"]
+global-allocator = ["c-gull/global-allocator"]
+log = ["c-gull/log"]
+max_level_off = ["c-gull/max_level_off"]
+panic-handler = ["c-gull/panic-handler"]
+panic-handler-trap = ["c-gull/panic-handler-trap"]
+threadsafe-setenv = ["c-gull/threadsafe-setenv"]
+todo = ["c-gull/todo"]

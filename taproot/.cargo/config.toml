@@ -1,16 +1,4 @@
 [build]
 target = "x86_64-unknown-linux-gnu"
 
-# no build-std: cdylib links the *precompiled* std, but -nodefaultlibs drops
-# glibc and c-gull (ABI-compatible) satisfies std's libc calls instead.
-[target.x86_64-unknown-linux-gnu]
-rustflags = [
-    # no glibc under our libc; export the c-gull symbols; name it libc.so.6
-    "-C", "link-arg=-nodefaultlibs",
-    "-C", "link-arg=-Wl,--export-dynamic",
-    "-C", "link-arg=-Wl,-soname,libc.so.6",
-    # first definition wins (rustc orders dependents first): c-scape's full
-    # getauxval shadows origin's few-types shim, which shares a CGU with
-    # origin's always-linked entry code. see PATCHES.md.
-    "-C", "link-arg=-Wl,--allow-multiple-definition",
-]
+# link flags live in build.rs so they ship with the published crate

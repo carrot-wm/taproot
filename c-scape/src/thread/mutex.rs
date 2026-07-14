@@ -1,31 +1,43 @@
-use rustix_futex_sync::lock_api::{RawMutex as _, RawReentrantMutex};
+use rustix_futex_sync::lock_api::{GetThreadId as _, RawMutex as _};
 use rustix_futex_sync::{RawCondvar, RawMutex};
 
-use core::mem::{size_of, ManuallyDrop};
+use core::mem::size_of;
 use core::ptr;
-use core::sync::atomic::{AtomicU32, Ordering};
+use core::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use core::time::Duration;
 use libc::c_int;
 
 use crate::GetThreadId;
 
-#[allow(non_camel_case_types)]
-#[repr(C)]
-union pthread_mutex_u {
-    normal: ManuallyDrop<RawMutex>,
-    reentrant: ManuallyDrop<RawReentrantMutex<RawMutex, GetThreadId>>,
-}
-
+// glibc's field bytes, mirrored: __lock, __count, __owner/__nusers,
+// __kind. libraries built against glibc bake its static initializers
+// (PTHREAD_MUTEX_INITIALIZER and the recursive/errorcheck _NP forms)
+// into their images - all zeros except __kind - and never call
+// pthread_mutex_init. keeping our state inside the fields glibc zeroes,
+// and reading the kind from glibc's own offset, makes those images
+// work unmodified.
 #[allow(non_camel_case_types)]
 #[repr(C)]
 struct PthreadMutexT {
+    lock: RawMutex,
+    count: AtomicU32,
+    owner: AtomicUsize,
     kind: AtomicU32,
-    u: pthread_mutex_u,
-    pad0: usize,
-    #[cfg(any(target_arch = "aarch64", target_arch = "x86"))]
-    pad1: usize,
+    _spins: u32,
+    #[cfg(target_pointer_width = "64")]
+    _list: [usize; 2],
+    #[cfg(target_pointer_width = "32")]
+    _list: [usize; 1],
+    #[cfg(target_arch = "aarch64")]
+    _pad: usize,
 }
 libc_type!(PthreadMutexT, pthread_mutex_t);
+
+/// the type lives in the low bits; robust/prio flags above them are
+/// not supported
+fn kind_type(kind: u32) -> c_int {
+    (kind & 3) as c_int
+}
 
 #[allow(non_camel_case_types)]
 #[repr(C)]
@@ -86,12 +98,7 @@ unsafe extern "C" fn pthread_mutexattr_gettype(
 #[no_mangle]
 unsafe extern "C" fn pthread_mutex_destroy(mutex: *mut PthreadMutexT) -> c_int {
     libc!(libc::pthread_mutex_destroy(checked_cast!(mutex)));
-    match (*mutex).kind.load(Ordering::SeqCst) as i32 {
-        libc::PTHREAD_MUTEX_NORMAL => ManuallyDrop::drop(&mut (*mutex).u.normal),
-        libc::PTHREAD_MUTEX_RECURSIVE => ManuallyDrop::drop(&mut (*mutex).u.reentrant),
-        libc::PTHREAD_MUTEX_ERRORCHECK => return libc::EINVAL,
-        _ => return libc::EINVAL,
-    }
+    // nothing owns resources; poison the kind like glibc does
     (*mutex).kind.store(!0, Ordering::SeqCst);
     0
 }
@@ -112,16 +119,12 @@ unsafe extern "C" fn pthread_mutex_init(
     };
 
     match kind as i32 {
-        libc::PTHREAD_MUTEX_NORMAL => {
-            ptr::write(&mut (*mutex).u.normal, ManuallyDrop::new(RawMutex::INIT))
-        }
-        libc::PTHREAD_MUTEX_RECURSIVE => ptr::write(
-            &mut (*mutex).u.reentrant,
-            ManuallyDrop::new(RawReentrantMutex::INIT),
-        ),
-        libc::PTHREAD_MUTEX_ERRORCHECK => return libc::EINVAL,
+        libc::PTHREAD_MUTEX_NORMAL
+        | libc::PTHREAD_MUTEX_RECURSIVE
+        | libc::PTHREAD_MUTEX_ERRORCHECK => {}
         _ => return libc::EINVAL,
     }
+    ptr::write_bytes(mutex.cast::<u8>(), 0, size_of::<PthreadMutexT>());
     (*mutex).kind.store(kind, Ordering::SeqCst);
     0
 }
@@ -129,11 +132,27 @@ unsafe extern "C" fn pthread_mutex_init(
 #[no_mangle]
 unsafe extern "C" fn pthread_mutex_lock(mutex: *mut PthreadMutexT) -> c_int {
     libc!(libc::pthread_mutex_lock(checked_cast!(mutex)));
-    match (*mutex).kind.load(Ordering::SeqCst) as i32 {
-        libc::PTHREAD_MUTEX_NORMAL => (*mutex).u.normal.lock(),
-        libc::PTHREAD_MUTEX_RECURSIVE => (*mutex).u.reentrant.lock(),
-        libc::PTHREAD_MUTEX_ERRORCHECK => return libc::EINVAL,
-        _ => return libc::EINVAL,
+    let mutex = &*mutex;
+    match kind_type(mutex.kind.load(Ordering::SeqCst)) {
+        libc::PTHREAD_MUTEX_RECURSIVE => {
+            let me = GetThreadId.nonzero_thread_id().get();
+            if mutex.owner.load(Ordering::Relaxed) == me {
+                mutex.count.fetch_add(1, Ordering::Relaxed);
+                return 0;
+            }
+            mutex.lock.lock();
+            mutex.owner.store(me, Ordering::Relaxed);
+        }
+        libc::PTHREAD_MUTEX_ERRORCHECK => {
+            let me = GetThreadId.nonzero_thread_id().get();
+            if mutex.owner.load(Ordering::Relaxed) == me {
+                return libc::EDEADLK;
+            }
+            mutex.lock.lock();
+            mutex.owner.store(me, Ordering::Relaxed);
+        }
+        // NORMAL; ADAPTIVE_NP is normal with extra spinning
+        _ => mutex.lock.lock(),
     }
     0
 }
@@ -141,16 +160,33 @@ unsafe extern "C" fn pthread_mutex_lock(mutex: *mut PthreadMutexT) -> c_int {
 #[no_mangle]
 unsafe extern "C" fn pthread_mutex_trylock(mutex: *mut PthreadMutexT) -> c_int {
     libc!(libc::pthread_mutex_trylock(checked_cast!(mutex)));
-    if match (*mutex).kind.load(Ordering::SeqCst) as i32 {
-        libc::PTHREAD_MUTEX_NORMAL => (*mutex).u.normal.try_lock(),
-        libc::PTHREAD_MUTEX_RECURSIVE => (*mutex).u.reentrant.try_lock(),
-        libc::PTHREAD_MUTEX_ERRORCHECK => return libc::EINVAL,
-        _ => return libc::EINVAL,
-    } {
-        0
-    } else {
-        libc::EBUSY
+    let mutex = &*mutex;
+    match kind_type(mutex.kind.load(Ordering::SeqCst)) {
+        libc::PTHREAD_MUTEX_RECURSIVE => {
+            let me = GetThreadId.nonzero_thread_id().get();
+            if mutex.owner.load(Ordering::Relaxed) == me {
+                mutex.count.fetch_add(1, Ordering::Relaxed);
+                return 0;
+            }
+            if !mutex.lock.try_lock() {
+                return libc::EBUSY;
+            }
+            mutex.owner.store(me, Ordering::Relaxed);
+        }
+        libc::PTHREAD_MUTEX_ERRORCHECK => {
+            let me = GetThreadId.nonzero_thread_id().get();
+            if !mutex.lock.try_lock() {
+                return libc::EBUSY;
+            }
+            mutex.owner.store(me, Ordering::Relaxed);
+        }
+        _ => {
+            if !mutex.lock.try_lock() {
+                return libc::EBUSY;
+            }
+        }
     }
+    0
 }
 
 #[no_mangle]
@@ -158,21 +194,25 @@ unsafe extern "C" fn pthread_mutex_unlock(mutex: *mut PthreadMutexT) -> c_int {
     libc!(libc::pthread_mutex_unlock(checked_cast!(mutex)));
 
     let mutex = &*mutex;
-    match mutex.kind.load(Ordering::SeqCst) as i32 {
-        libc::PTHREAD_MUTEX_NORMAL => {
-            if !mutex.u.normal.is_locked() {
+    match kind_type(mutex.kind.load(Ordering::SeqCst)) {
+        libc::PTHREAD_MUTEX_RECURSIVE | libc::PTHREAD_MUTEX_ERRORCHECK => {
+            let me = GetThreadId.nonzero_thread_id().get();
+            if mutex.owner.load(Ordering::Relaxed) != me {
                 return libc::EPERM;
             }
-            mutex.u.normal.unlock()
+            if mutex.count.load(Ordering::Relaxed) > 0 {
+                mutex.count.fetch_sub(1, Ordering::Relaxed);
+                return 0;
+            }
+            mutex.owner.store(0, Ordering::Relaxed);
+            mutex.lock.unlock();
         }
-        libc::PTHREAD_MUTEX_RECURSIVE => {
-            if !mutex.u.reentrant.is_locked() {
+        _ => {
+            if !mutex.lock.is_locked() {
                 return libc::EPERM;
             }
-            mutex.u.reentrant.unlock()
+            mutex.lock.unlock()
         }
-        libc::PTHREAD_MUTEX_ERRORCHECK => return libc::EINVAL,
-        _ => return libc::EINVAL,
     }
     0
 }
@@ -301,10 +341,8 @@ unsafe extern "C" fn pthread_cond_wait(cond: *mut PthreadCondT, lock: *mut Pthre
         checked_cast!(cond),
         checked_cast!(lock)
     ));
-    match (*lock).kind.load(Ordering::SeqCst) as i32 {
-        libc::PTHREAD_MUTEX_NORMAL => (*cond).inner.wait(&(*lock).u.normal),
-        libc::PTHREAD_MUTEX_RECURSIVE => return libc::EINVAL,
-        libc::PTHREAD_MUTEX_ERRORCHECK => return libc::EINVAL,
+    match kind_type((*lock).kind.load(Ordering::SeqCst)) {
+        libc::PTHREAD_MUTEX_NORMAL => (*cond).inner.wait(&(*lock).lock),
         _ => return libc::EINVAL,
     }
     0
@@ -332,16 +370,14 @@ unsafe extern "C" fn pthread_cond_timedwait(
         now.tv_nsec.try_into().unwrap(),
     );
     let reltime = abstime.saturating_sub(now);
-    match (*lock).kind.load(Ordering::SeqCst) as i32 {
+    match kind_type((*lock).kind.load(Ordering::SeqCst)) {
         libc::PTHREAD_MUTEX_NORMAL => {
-            if (*cond).inner.wait_timeout(&(*lock).u.normal, reltime) {
+            if (*cond).inner.wait_timeout(&(*lock).lock, reltime) {
                 0
             } else {
                 libc::ETIMEDOUT
             }
         }
-        libc::PTHREAD_MUTEX_RECURSIVE => return libc::EINVAL,
-        libc::PTHREAD_MUTEX_ERRORCHECK => return libc::EINVAL,
         _ => return libc::EINVAL,
     }
 }

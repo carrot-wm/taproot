@@ -977,7 +977,11 @@ unsafe fn decode_addr(
     if addr.cast::<libc::sockaddr>().read_unaligned().sa_family == libc::AF_UNIX as _ {
         let sun_path = &(*addr.cast::<libc::sockaddr_un>()).sun_path;
         let after_nul = len as usize - offsetof_sun_path();
-        if after_nul > 0 && sun_path[after_nul] == 0 && sun_path[after_nul - 1] != 0 {
+        if after_nul > 0
+            && after_nul < sun_path.len()
+            && sun_path[after_nul] == 0
+            && sun_path[after_nul - 1] != 0
+        {
             len += 1;
         }
     }

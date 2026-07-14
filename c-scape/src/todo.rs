@@ -321,14 +321,6 @@ unsafe extern "C" fn clock_getcpuclockid() {
     todo!("clock_getcpuclockid")
 }
 #[no_mangle]
-unsafe extern "C" fn getresgid() {
-    todo!("getresgid")
-}
-#[no_mangle]
-unsafe extern "C" fn getresuid() {
-    todo!("getresuid")
-}
-#[no_mangle]
 unsafe extern "C" fn ppoll() {
     todo!("ppoll")
 }

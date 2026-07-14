@@ -14,7 +14,7 @@ mod priority;
 mod rlimit;
 mod sid;
 mod system;
-mod uid;
+pub(crate) mod uid;
 mod umask;
 mod wait;
 

@@ -13,22 +13,6 @@ unsafe extern "C" fn semop() {
     todo!("semop")
 }
 #[no_mangle]
-unsafe extern "C" fn shmat() {
-    todo!("shmat")
-}
-#[no_mangle]
-unsafe extern "C" fn shmget() {
-    todo!("shmget")
-}
-#[no_mangle]
-unsafe extern "C" fn shmdt() {
-    todo!("shmdt")
-}
-#[no_mangle]
-unsafe extern "C" fn shmctl() {
-    todo!("shmctl")
-}
-#[no_mangle]
 unsafe extern "C" fn msgctl() {
     todo!("msgctl")
 }

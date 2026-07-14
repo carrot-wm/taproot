@@ -44,3 +44,14 @@ unsafe fn rustix_to_libc(buf: *mut libc::statvfs, val: rustix::fs::StatVfs) {
     converted.f_namemax = val.f_namemax as _;
     *buf = converted;
 }
+
+// statvfs is already the 64-bit form on every target we build
+#[no_mangle]
+unsafe extern "C" fn statvfs64(path: *const c_char, buf: *mut libc::statvfs) -> c_int {
+    statvfs(path, buf)
+}
+
+#[no_mangle]
+unsafe extern "C" fn fstatvfs64(fd: c_int, buf: *mut libc::statvfs) -> c_int {
+    fstatvfs(fd, buf)
+}

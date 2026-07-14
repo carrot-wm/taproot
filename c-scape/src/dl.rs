@@ -181,6 +181,24 @@ unsafe extern "C" fn dladdr(addr: *const c_void, info: *mut libc::Dl_info) -> c_
     1
 }
 
+/// glibc extension: dladdr plus symbol-table/link-map access. the maps-based
+/// dladdr serves the base lookup; the extra_info forms need a real dynamic
+/// linker's tables, so those probes report "not found" and callers take
+/// their fallback path
+#[cfg(not(target_os = "wasi"))]
+#[no_mangle]
+unsafe extern "C" fn dladdr1(
+    addr: *const c_void,
+    info: *mut libc::Dl_info,
+    _extra_info: *mut *mut c_void,
+    flags: c_int,
+) -> c_int {
+    if flags != 0 {
+        return 0;
+    }
+    dladdr(addr, info)
+}
+
 #[cfg(not(target_os = "wasi"))]
 #[no_mangle]
 unsafe extern "C" fn dl_iterate_phdr(

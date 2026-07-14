@@ -84,6 +84,19 @@ unsafe extern "C" fn pthread_mutexattr_settype(attr: *mut PthreadMutexattrT, kin
     0
 }
 
+/// accepted and ignored: our futex mutexes exclude correctly but do not
+/// inherit priority; drivers only ask for this as a scheduling nicety
+#[no_mangle]
+unsafe extern "C" fn pthread_mutexattr_setprotocol(
+    _attr: *mut PthreadMutexattrT,
+    protocol: c_int,
+) -> c_int {
+    match protocol {
+        libc::PTHREAD_PRIO_NONE | libc::PTHREAD_PRIO_INHERIT | libc::PTHREAD_PRIO_PROTECT => 0,
+        _ => libc::EINVAL,
+    }
+}
+
 #[no_mangle]
 unsafe extern "C" fn pthread_mutexattr_gettype(
     attr: *mut PthreadMutexattrT,

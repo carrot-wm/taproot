@@ -230,3 +230,17 @@ unsafe extern "C" fn msync(addr: *mut c_void, len: size_t, flags: c_int) -> c_in
         None => -1,
     }
 }
+
+// posix advice values match the plain ones, except DONTNEED, which
+// posix defines non-destructively - glibc treats it as a no-op, so do we
+#[no_mangle]
+unsafe extern "C" fn posix_madvise(addr: *mut c_void, length: size_t, advice: c_int) -> c_int {
+    if advice == libc::POSIX_MADV_DONTNEED {
+        return 0;
+    }
+    if madvise(addr, length, advice) == 0 {
+        0
+    } else {
+        errno::errno().0
+    }
+}

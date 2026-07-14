@@ -107,6 +107,7 @@ mod termios_;
 #[cfg(feature = "thread")]
 #[cfg(feature = "take-charge")]
 mod thread;
+mod glibc_extras;
 mod time;
 
 #[cfg(feature = "deprecated-and-unimplemented")]

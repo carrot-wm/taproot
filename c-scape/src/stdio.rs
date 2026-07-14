@@ -995,3 +995,25 @@ mod tests {
         assert_eq!(&buf, b"hello big worl\0_");
     }
 }
+
+// glibc export names for the same functions; old binaries import these
+#[no_mangle]
+unsafe extern "C" fn _IO_getc(file: *mut libc::FILE) -> c_int {
+    getc(file)
+}
+
+#[no_mangle]
+unsafe extern "C" fn _IO_putc(c: c_int, file: *mut libc::FILE) -> c_int {
+    putc(c, file)
+}
+
+#[no_mangle]
+unsafe extern "C" fn fflush_unlocked(file: *mut libc::FILE) -> c_int {
+    fflush(file)
+}
+
+// the slow path behind glibc's putc macro
+#[no_mangle]
+unsafe extern "C" fn __overflow(file: *mut libc::FILE, ch: c_int) -> c_int {
+    putc(ch, file)
+}

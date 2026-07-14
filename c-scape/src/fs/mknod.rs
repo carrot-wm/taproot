@@ -59,3 +59,14 @@ unsafe extern "C" fn mknodat(
         None => -1,
     }
 }
+
+// glibc's versioned mknod shim; the device number arrives by pointer
+#[no_mangle]
+unsafe extern "C" fn __xmknod(
+    _ver: c_int,
+    pathname: *const c_char,
+    mode: libc::mode_t,
+    dev: *mut libc::dev_t,
+) -> c_int {
+    mknod(pathname, mode, *dev)
+}

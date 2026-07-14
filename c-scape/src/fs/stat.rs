@@ -264,3 +264,58 @@ unsafe extern "C" fn fstatfs(fd: c_int, stat_: *mut libc::statfs) -> c_int {
         None => -1,
     }
 }
+
+// glibc's versioned stat ABI: old binaries call through these shims
+// with a version argument; the layouts already match, the version is
+// noise. `stat64` is `stat` on every target we build.
+#[no_mangle]
+unsafe extern "C" fn __xstat(_ver: c_int, path: *const c_char, stat_: *mut libc::stat) -> c_int {
+    stat(path, stat_)
+}
+
+#[no_mangle]
+unsafe extern "C" fn __xstat64(_ver: c_int, path: *const c_char, stat_: *mut libc::stat) -> c_int {
+    stat(path, stat_)
+}
+
+#[no_mangle]
+unsafe extern "C" fn __lxstat(_ver: c_int, path: *const c_char, stat_: *mut libc::stat) -> c_int {
+    lstat(path, stat_)
+}
+
+#[no_mangle]
+unsafe extern "C" fn __lxstat64(_ver: c_int, path: *const c_char, stat_: *mut libc::stat) -> c_int {
+    lstat(path, stat_)
+}
+
+#[no_mangle]
+unsafe extern "C" fn __fxstat(_ver: c_int, fd: c_int, stat_: *mut libc::stat) -> c_int {
+    fstat(fd, stat_)
+}
+
+#[no_mangle]
+unsafe extern "C" fn __fxstat64(_ver: c_int, fd: c_int, stat_: *mut libc::stat) -> c_int {
+    fstat(fd, stat_)
+}
+
+#[no_mangle]
+unsafe extern "C" fn __fxstatat(
+    _ver: c_int,
+    fd: c_int,
+    path: *const c_char,
+    stat_: *mut libc::stat,
+    flags: c_int,
+) -> c_int {
+    fstatat(fd, path, stat_, flags)
+}
+
+#[no_mangle]
+unsafe extern "C" fn __fxstatat64(
+    _ver: c_int,
+    fd: c_int,
+    path: *const c_char,
+    stat_: *mut libc::stat,
+    flags: c_int,
+) -> c_int {
+    fstatat(fd, path, stat_, flags)
+}

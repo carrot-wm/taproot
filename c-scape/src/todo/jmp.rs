@@ -4,10 +4,6 @@
 //! `setcontext`/`getcontext`/etc.
 
 #[no_mangle]
-unsafe extern "C" fn __longjmp_chk() {
-    todo!("__longjmp_chk")
-}
-#[no_mangle]
 unsafe extern "C" fn getcontext() {
     todo!("getcontext")
 }

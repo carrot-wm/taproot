@@ -160,3 +160,56 @@ unsafe extern "C" fn __fgets_chk(
 
     libc::fgets(s, strsize, stream.cast())
 }
+
+// <https://man7.org/linux/man-pages/man3/explicit_bzero.3.html>, the
+// fortified form; volatile writes so the zeroing never optimizes away
+#[no_mangle]
+unsafe extern "C" fn __explicit_bzero_chk(dest: *mut c_void, len: size_t, destlen: size_t) {
+    if len > destlen {
+        __chk_fail();
+    }
+    let p = dest.cast::<u8>();
+    for i in 0..len {
+        p.add(i).write_volatile(0);
+    }
+}
+
+// <https://refspecs.linuxbase.org/LSB_5.0.0/LSB-Core-generic/LSB-Core-generic/baselib---mempcpy-chk-1.html>
+#[no_mangle]
+unsafe extern "C" fn __mempcpy_chk(
+    dest: *mut c_void,
+    src: *const c_void,
+    len: size_t,
+    destlen: size_t,
+) -> *mut c_void {
+    if len > destlen {
+        __chk_fail();
+    }
+    libc::memcpy(dest, src, len).cast::<u8>().add(len).cast()
+}
+
+// <https://refspecs.linuxbase.org/LSB_5.0.0/LSB-Core-generic/LSB-Core-generic/baselib---stpncpy-chk-1.html>
+#[no_mangle]
+unsafe extern "C" fn __stpncpy_chk(
+    dest: *mut c_char,
+    src: *const c_char,
+    n: size_t,
+    destlen: size_t,
+) -> *mut c_char {
+    if n > destlen {
+        __chk_fail();
+    }
+    let mut copied = 0;
+    while copied < n {
+        let b = *src.add(copied);
+        *dest.add(copied) = b;
+        if b == 0 {
+            break;
+        }
+        copied += 1;
+    }
+    for i in copied..n {
+        *dest.add(i) = 0;
+    }
+    dest.add(copied)
+}

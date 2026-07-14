@@ -605,10 +605,6 @@ unsafe extern "C" fn pthread_mutexattr_getrobust() {
     todo!("pthread_mutexattr_getrobust")
 }
 #[no_mangle]
-unsafe extern "C" fn pthread_mutexattr_setprotocol() {
-    todo!("pthread_mutexattr_setprotocol")
-}
-#[no_mangle]
 unsafe extern "C" fn pthread_mutexattr_setpshared() {
     todo!("pthread_mutexattr_setpshared")
 }
@@ -712,6 +708,10 @@ unsafe extern "C" fn twalk() {
 #[no_mangle]
 unsafe extern "C" fn posix_spawn_file_actions_addclose() {
     todo!("posix_spawn_file_actions_addclose")
+}
+#[no_mangle]
+unsafe extern "C" fn posix_spawn_file_actions_addopen() {
+    todo!("posix_spawn_file_actions_addopen")
 }
 #[no_mangle]
 unsafe extern "C" fn pthread_mutex_consistent() {
@@ -848,14 +848,6 @@ unsafe extern "C" fn pthread_setschedprio() {
 #[no_mangle]
 unsafe extern "C" fn sched_getparam() {
     todo!("sched_getparam")
-}
-#[no_mangle]
-unsafe extern "C" fn sched_get_priority_max() {
-    todo!("sched_get_priority_max")
-}
-#[no_mangle]
-unsafe extern "C" fn sched_get_priority_min() {
-    todo!("sched_get_priority_min")
 }
 #[no_mangle]
 unsafe extern "C" fn sched_getscheduler() {
@@ -1180,4 +1172,91 @@ unsafe extern "C" fn getwc() {
 #[no_mangle]
 unsafe extern "C" fn putwc() {
     todo!("putwc")
+}
+
+#[no_mangle]
+unsafe extern "C" fn lockf() {
+    todo!("lockf")
+}
+#[no_mangle]
+unsafe extern "C" fn __strftime_l() {
+    todo!("__strftime_l")
+}
+#[no_mangle]
+unsafe extern "C" fn __wcsftime_l() {
+    todo!("__wcsftime_l")
+}
+/// no utmp under a pure-rust libc; "not found" is an honest answer
+#[no_mangle]
+unsafe extern "C" fn getlogin_r(_buf: *mut core::ffi::c_char, _len: usize) -> core::ffi::c_int {
+    libc::ENOENT
+}
+
+#[no_mangle]
+unsafe extern "C" fn dlmopen() {
+    todo!("dlmopen")
+}
+#[no_mangle]
+unsafe extern "C" fn fgetgrent() {
+    todo!("fgetgrent")
+}
+#[no_mangle]
+unsafe extern "C" fn fgetpwent() {
+    todo!("fgetpwent")
+}
+#[no_mangle]
+unsafe extern "C" fn fgetsgent() {
+    todo!("fgetsgent")
+}
+#[no_mangle]
+unsafe extern "C" fn fgetspent() {
+    todo!("fgetspent")
+}
+#[no_mangle]
+unsafe extern "C" fn getmntent_r() {
+    todo!("getmntent_r")
+}
+#[no_mangle]
+unsafe extern "C" fn glob64() {
+    todo!("glob64")
+}
+#[no_mangle]
+unsafe extern "C" fn globfree64() {
+    todo!("globfree64")
+}
+#[no_mangle]
+unsafe extern "C" fn parse_printf_format() {
+    todo!("parse_printf_format")
+}
+#[no_mangle]
+unsafe extern "C" fn putgrent() {
+    todo!("putgrent")
+}
+#[no_mangle]
+unsafe extern "C" fn putpwent() {
+    todo!("putpwent")
+}
+#[no_mangle]
+unsafe extern "C" fn putsgent() {
+    todo!("putsgent")
+}
+#[no_mangle]
+unsafe extern "C" fn putspent() {
+    todo!("putspent")
+}
+#[no_mangle]
+unsafe extern "C" fn strfromf128() {
+    todo!("strfromf128")
+}
+#[no_mangle]
+unsafe extern "C" fn strtof128() {
+    todo!("strtof128")
+}
+#[no_mangle]
+unsafe extern "C" fn tdestroy() {
+    todo!("tdestroy")
+}
+#[no_mangle]
+unsafe extern "C" fn __isoc23_scanf() {
+    todo!("__isoc23_scanf")
 }

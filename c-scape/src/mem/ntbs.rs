@@ -616,3 +616,36 @@ mod tests {
         }
     }
 }
+
+#[no_mangle]
+unsafe extern "C" fn wcsncmp(
+    s1: *const libc::wchar_t,
+    s2: *const libc::wchar_t,
+    n: size_t,
+) -> c_int {
+    for i in 0..n {
+        let (a, b) = (*s1.add(i), *s2.add(i));
+        if a != b {
+            return if a < b { -1 } else { 1 };
+        }
+        if a == 0 {
+            break;
+        }
+    }
+    0
+}
+
+// glibc export names for the same functions
+#[no_mangle]
+unsafe extern "C" fn __strdup(s: *const c_char) -> *mut c_char {
+    strdup(s)
+}
+
+#[no_mangle]
+unsafe extern "C" fn __strtok_r(
+    s: *mut c_char,
+    delim: *const c_char,
+    save: *mut *mut c_char,
+) -> *mut c_char {
+    strtok_r(s, delim, save)
+}

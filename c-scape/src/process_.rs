@@ -242,6 +242,19 @@ fn _getauxval(type_: c_ulong) -> c_ulong {
     0
 }
 
+/// version-blind by construction: every symbol we serve is unversioned,
+/// so the versioned probe degrades to the plain lookup. null means the
+/// caller's feature probe comes back "absent", which is the truth
+#[cfg(not(target_os = "wasi"))]
+#[no_mangle]
+unsafe extern "C" fn dlvsym(
+    handle: *mut c_void,
+    symbol: *const c_char,
+    _version: *const c_char,
+) -> *mut c_void {
+    dlsym(handle, symbol)
+}
+
 #[cfg(not(target_os = "wasi"))]
 #[no_mangle]
 unsafe extern "C" fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void {
@@ -258,6 +271,13 @@ unsafe extern "C" fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c
             b"statx" => libc::statx as _,
             #[cfg(any(target_os = "android", target_os = "linux"))]
             b"getrandom" => libc::getrandom as _,
+            // driver blobs probe the allocator family before using it
+            b"malloc" => libc::malloc as _,
+            b"calloc" => libc::calloc as _,
+            b"realloc" => libc::realloc as _,
+            b"free" => libc::free as _,
+            b"posix_memalign" => libc::posix_memalign as _,
+            b"aligned_alloc" => libc::aligned_alloc as _,
             #[cfg(any(target_os = "android", target_os = "linux"))]
             b"copy_file_range" => libc::copy_file_range as _,
             #[cfg(target_env = "gnu")]
@@ -459,6 +479,31 @@ unsafe extern "C" fn prctl(
         }
         _ => {
             set_errno(Errno(libc::EINVAL));
+            -1
+        }
+    }
+}
+
+// fixed on linux: the fifo/rr band is 1..=99, everything else is 0
+#[no_mangle]
+unsafe extern "C" fn sched_get_priority_max(policy: c_int) -> c_int {
+    match policy {
+        libc::SCHED_FIFO | libc::SCHED_RR => 99,
+        libc::SCHED_OTHER | libc::SCHED_BATCH | libc::SCHED_IDLE => 0,
+        _ => {
+            errno::set_errno(errno::Errno(libc::EINVAL));
+            -1
+        }
+    }
+}
+
+#[no_mangle]
+unsafe extern "C" fn sched_get_priority_min(policy: c_int) -> c_int {
+    match policy {
+        libc::SCHED_FIFO | libc::SCHED_RR => 1,
+        libc::SCHED_OTHER | libc::SCHED_BATCH | libc::SCHED_IDLE => 0,
+        _ => {
+            errno::set_errno(errno::Errno(libc::EINVAL));
             -1
         }
     }

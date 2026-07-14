@@ -90,6 +90,11 @@ impl Thread {
 ///
 /// This is not `repr(C)` and not ABI-exposed.
 struct ThreadData {
+    /// the address of this instance's `INSTANCE_ANCHOR`: a thread created by
+    /// a different copy of origin in the same process (exe + dlopened libc)
+    /// carries a different value, and layout-blind cross-runtime access is
+    /// refused instead of corrupting
+    magic: usize,
     thread_id: AtomicI32,
     #[cfg(feature = "unstable-errno")]
     errno_val: Cell<i32>,
@@ -114,6 +119,7 @@ impl ThreadData {
     #[inline]
     fn new(stack_addr: *mut c_void, stack_size: usize, guard_size: usize, map_size: usize) -> Self {
         Self {
+            magic: instance_magic(),
             thread_id: AtomicI32::new(0),
             #[cfg(feature = "unstable-errno")]
             errno_val: Cell::new(0),
@@ -964,11 +970,30 @@ unsafe fn free_memory(thread: Thread) {
 /// Registers a function to call when the current thread exits.
 #[cfg(feature = "thread-at-exit")]
 pub fn at_exit(func: Box<dyn FnOnce()>) {
+    // a thread another runtime created (the driver's own, or the other
+    // origin copy in this process) has metadata this build cannot touch;
+    // keep the dtor alive forever rather than scribble through it
+    if thread_pointer().addr() < 0x1000 {
+        core::mem::forget(func);
+        return;
+    }
     // SAFETY: `current()` points to thread-local data which is valid as long
     // as the thread is alive.
     unsafe {
-        current().0.as_mut().dtors.push(func);
+        let thread = current().0.as_mut();
+        if thread.magic != instance_magic() {
+            core::mem::forget(func);
+            return;
+        }
+        thread.dtors.push(func);
     }
+}
+
+/// A value unique to this loaded copy of origin.
+#[inline]
+fn instance_magic() -> usize {
+    static INSTANCE_ANCHOR: u8 = 0;
+    core::ptr::addr_of!(INSTANCE_ANCHOR).addr()
 }
 
 #[inline]

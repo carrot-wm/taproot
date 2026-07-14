@@ -12,4 +12,10 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # eyra pulls origin (startup) + c-gull (libc), routed to the fork members
-eyra = { package = "taproot-eyra", path = "../eyra", version = "0.22.3" }
+# todo: blob drivers import far more of the libc surface than they
+# call; the stubs let RTLD_NOW succeed and name anything actually used
+eyra = { package = "taproot-eyra", path = "../eyra", version = "0.22.3", features = ["todo"] }
+# the dso ctor feeds this copy of origin/rustix the real auxv (features
+# arrive through eyra's take-charge graph; fs covers the /proc read)
+origin = { version = "0.26.2", default-features = false }
+rustix = { version = "1.0", default-features = false, features = ["fs"] }

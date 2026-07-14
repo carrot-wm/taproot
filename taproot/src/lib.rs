@@ -5,6 +5,7 @@
 extern crate eyra;
 
 mod barrier;
+mod dso_init;
 mod env;
 mod gap;
 mod scanf;

@@ -20,6 +20,12 @@ members = [
   "c-scape",
   "c-gull",
   "eyra",
+  "origin",
   "taproot",
   "stub",
 ]
+
+# the fork carries a dso-init entry point and a load-bias fix so a dlopen'd
+# libc.so can create threads with the executable's tls layout
+[patch.crates-io]
+origin = { path = "origin" }

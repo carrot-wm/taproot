@@ -11,4 +11,5 @@ fn main() {
     // getauxval shadows origin's few-types shim, which shares a CGU with
     // origin's always-linked entry code. see PATCHES.md.
     println!("cargo:rustc-link-arg=-Wl,--allow-multiple-definition");
+
 }

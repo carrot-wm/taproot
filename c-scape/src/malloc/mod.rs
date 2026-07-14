@@ -90,6 +90,20 @@ unsafe fn get_layout(ptr: *mut u8) -> alloc::alloc::Layout {
 unsafe fn tagged_dealloc(ptr: *mut u8) {
     let tag_layout = alloc::alloc::Layout::new::<Tag>();
     let type_layout = get_layout(ptr);
+    // a tag that can't be real means a double free or a stray pointer: a
+    // once-freed chunk carries dlmalloc's bin links where the tag was, and
+    // those are never a power-of-two align. honoring it would wild-dealloc
+    // with the arena lock held, so drop the free instead - the chunk leaks
+    // but the arena stays sound, which is how glibc's fastbin path absorbs
+    // the same abuse (nvidia's init-failure teardown does exactly this).
+    if !type_layout.align().is_power_of_two() || type_layout.size() > (isize::MAX as usize) / 4 {
+        static WARNED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+        if !WARNED.swap(true, core::sync::atomic::Ordering::Relaxed) {
+            let msg = b"taproot: free of untagged or already-freed pointer; leaking it\n";
+            let _ = rustix::io::write(unsafe { rustix::fd::BorrowedFd::borrow_raw(2) }, msg);
+        }
+        return;
+    }
     if let Ok((total_layout, offset)) = tag_layout.extend(type_layout) {
         let total_ptr = ptr.wrapping_sub(offset);
         the_dealloc(total_ptr, total_layout);

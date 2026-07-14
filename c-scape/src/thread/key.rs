@@ -2,7 +2,6 @@ use alloc::boxed::Box;
 use core::cell::Cell;
 use core::ptr::{null, null_mut};
 use core::sync::atomic::{AtomicU32, Ordering};
-use errno::{set_errno, Errno};
 use libc::{c_int, c_void};
 
 use rustix_futex_sync::RwLock;
@@ -168,8 +167,10 @@ unsafe extern "C" fn pthread_key_create(
 
         // If the loop still did not find a valid key
         if next_key >= PTHREAD_KEYS_MAX {
-            set_errno(Errno(libc::EAGAIN));
-            return -1;
+            // pthread functions return the error code, not -1/errno
+            let msg = b"taproot: pthread_key_create: all keys in use\n";
+            let _ = rustix::io::write(unsafe { rustix::fd::BorrowedFd::borrow_raw(2) }, msg);
+            return libc::EAGAIN;
         }
     }
 
@@ -179,6 +180,17 @@ unsafe extern "C" fn pthread_key_create(
     key_data.destructors[next_key as usize] = Some(dtor.unwrap_or(empty_dtor));
 
     0
+}
+
+// gcc's gthr-posix.h tests this glibc-compat name to decide whether the
+// process is threaded; unresolved, every __gthread_* call answers -1 and
+// libstdc++'s call_once throws system_error(-1)
+#[no_mangle]
+unsafe extern "C" fn __pthread_key_create(
+    key: *mut libc::pthread_key_t,
+    dtor: Option<unsafe extern "C" fn(_: *mut c_void)>,
+) -> c_int {
+    pthread_key_create(key, dtor)
 }
 
 #[no_mangle]

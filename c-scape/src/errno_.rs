@@ -47,6 +47,9 @@ unsafe extern "C" fn __xpg_strerror_r(errnum: c_int, buf: *mut c_char, buflen: u
 
     let message = if errnum == 0 {
         "Success".to_owned()
+    } else if !(1..4096).contains(&errnum) {
+        // out of the kernel errno range; rustix's Errno can't hold it
+        format!("Unknown error {}", errnum)
     } else {
         match crate::error_str::error_str(rustix::io::Errno::from_raw_os_error(errnum)) {
             Some(s) => s.to_owned(),

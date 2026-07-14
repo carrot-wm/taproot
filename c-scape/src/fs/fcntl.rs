@@ -162,3 +162,37 @@ impl Flock for libc::flock64 {
         self.l_pid = pid;
     }
 }
+
+// whole-file only, like the F_SETLK arm above; a section lock covering
+// [offset, offset+len) locks the whole file instead, which is stronger
+// but never weaker
+#[no_mangle]
+unsafe extern "C" fn lockf(fd: c_int, cmd: c_int, _len: libc::off_t) -> c_int {
+    libc!(libc::lockf(fd, cmd, _len));
+
+    let fd = BorrowedFd::borrow_raw(fd);
+    let op = match cmd {
+        libc::F_ULOCK => FlockOperation::Unlock,
+        libc::F_LOCK => FlockOperation::LockExclusive,
+        libc::F_TLOCK | libc::F_TEST => FlockOperation::NonBlockingLockExclusive,
+        _ => {
+            set_errno(Errno(libc::EINVAL));
+            return -1;
+        }
+    };
+    match convert_res(rustix::fs::fcntl_lock(fd, op)) {
+        Some(()) => {
+            if cmd == libc::F_TEST {
+                // only probing: put it back
+                let _ = rustix::fs::fcntl_lock(fd, FlockOperation::Unlock);
+            }
+            0
+        }
+        None => -1,
+    }
+}
+
+#[no_mangle]
+unsafe extern "C" fn lockf64(fd: c_int, cmd: c_int, len: libc::off64_t) -> c_int {
+    lockf(fd, cmd, len)
+}

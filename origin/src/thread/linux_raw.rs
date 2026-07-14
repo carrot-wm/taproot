@@ -698,7 +698,14 @@ pub(super) unsafe extern "C" fn entry(
 }
 
 /// Call the destructors registered with [`at_exit`] and exit the thread.
-unsafe fn exit(return_value: Option<NonNull<c_void>>) -> ! {
+///
+/// # Safety
+///
+/// The calling thread must have been created by origin (or be the origin
+/// main thread), and no frames on its stack may own resources that need
+/// unwinding - this exits without running Rust destructors above the
+/// caller. Exposed for `pthread_exit`.
+pub unsafe fn exit(return_value: Option<NonNull<c_void>>) -> ! {
     unsafe {
         let current = current();
 

@@ -2,6 +2,7 @@ mod key;
 mod mutex;
 mod once;
 mod rwlock;
+mod sem;
 mod spinlock;
 
 use alloc::boxed::Box;
@@ -323,6 +324,59 @@ unsafe extern "C" fn pthread_equal(a: libc::pthread_t, b: libc::pthread_t) -> c_
     //libc!(libc::pthread_equal(a, b));
 
     i32::from(a == b)
+}
+
+// taproot: exit without unwinding - the frames above are the driver's C,
+// and origin's exit runs the thread-local dtors and frees a detached stack
+#[no_mangle]
+unsafe extern "C" fn pthread_exit(retval: *mut c_void) -> ! {
+    thread::exit(NonNull::new(retval))
+}
+
+#[no_mangle]
+unsafe extern "C" fn pthread_setaffinity_np(
+    pthread: PthreadT,
+    cpu_set_size: usize,
+    mask: *const libc::cpu_set_t,
+) -> c_int {
+    let origin_thread = Thread::from_raw_unchecked(pthread.cast());
+    let Some(tid) = thread::id(origin_thread) else {
+        return libc::ESRCH;
+    };
+    let mut set = rustix::thread::CpuSet::new();
+    let words = core::cmp::min(cpu_set_size, core::mem::size_of::<libc::cpu_set_t>()) * 8;
+    for cpu in 0..words {
+        if libc::CPU_ISSET(cpu, &*mask) {
+            set.set(cpu);
+        }
+    }
+    match rustix::thread::sched_setaffinity(Some(tid), &set) {
+        Ok(()) => 0,
+        Err(err) => err.raw_os_error(),
+    }
+}
+
+// scheduling attributes are accepted and ignored: every origin thread runs
+// with inherited default scheduling, which is also what the defaults mean
+#[no_mangle]
+unsafe extern "C" fn pthread_attr_setinheritsched(
+    _attr: *mut PthreadAttrT,
+    _inheritsched: c_int,
+) -> c_int {
+    0
+}
+
+#[no_mangle]
+unsafe extern "C" fn pthread_attr_setschedparam(
+    _attr: *mut PthreadAttrT,
+    _param: *const c_void,
+) -> c_int {
+    0
+}
+
+#[no_mangle]
+unsafe extern "C" fn pthread_attr_setschedpolicy(_attr: *mut PthreadAttrT, _policy: c_int) -> c_int {
+    0
 }
 
 // taproot: cancellation is not supported - `pthread_cancel` answers ENOSYS

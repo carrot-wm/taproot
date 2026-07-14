@@ -321,14 +321,6 @@ unsafe extern "C" fn clock_getcpuclockid() {
     todo!("clock_getcpuclockid")
 }
 #[no_mangle]
-unsafe extern "C" fn ppoll() {
-    todo!("ppoll")
-}
-#[no_mangle]
-unsafe extern "C" fn __ppoll_chk() {
-    todo!("__ppoll_chk")
-}
-#[no_mangle]
 unsafe extern "C" fn pselect() {
     todo!("pselect")
 }
@@ -525,18 +517,6 @@ unsafe extern "C" fn pthread_attr_getscope() {
     todo!("pthread_attr_getscope")
 }
 #[no_mangle]
-unsafe extern "C" fn pthread_attr_setinheritsched() {
-    todo!("pthread_attr_setinheritsched")
-}
-#[no_mangle]
-unsafe extern "C" fn pthread_attr_setschedparam() {
-    todo!("pthread_attr_setschedparam")
-}
-#[no_mangle]
-unsafe extern "C" fn pthread_attr_setschedpolicy() {
-    todo!("pthread_attr_setschedpolicy")
-}
-#[no_mangle]
 unsafe extern "C" fn pthread_attr_setscope() {
     todo!("pthread_attr_setscope")
 }
@@ -726,40 +706,12 @@ unsafe extern "C" fn sem_close() {
     todo!("sem_close")
 }
 #[no_mangle]
-unsafe extern "C" fn sem_destroy() {
-    todo!("sem_destroy")
-}
-#[no_mangle]
-unsafe extern "C" fn sem_getvalue() {
-    todo!("sem_getvalue")
-}
-#[no_mangle]
-unsafe extern "C" fn sem_init() {
-    todo!("sem_init")
-}
-#[no_mangle]
 unsafe extern "C" fn sem_open() {
     todo!("sem_open")
 }
 #[no_mangle]
-unsafe extern "C" fn sem_post() {
-    todo!("sem_post")
-}
-#[no_mangle]
-unsafe extern "C" fn sem_timedwait() {
-    todo!("sem_timedwait")
-}
-#[no_mangle]
-unsafe extern "C" fn sem_trywait() {
-    todo!("sem_trywait")
-}
-#[no_mangle]
 unsafe extern "C" fn sem_unlink() {
     todo!("sem_unlink")
-}
-#[no_mangle]
-unsafe extern "C" fn sem_wait() {
-    todo!("sem_wait")
 }
 #[no_mangle]
 unsafe extern "C" fn initstate() {
@@ -828,10 +780,6 @@ unsafe extern "C" fn pthread_rwlock_timedrdlock() {
 #[no_mangle]
 unsafe extern "C" fn pthread_rwlock_timedwrlock() {
     todo!("pthread_rwlock_timedwrlock")
-}
-#[no_mangle]
-unsafe extern "C" fn pthread_setaffinity_np() {
-    todo!("pthread_setaffinity_np")
 }
 #[no_mangle]
 unsafe extern "C" fn pthread_setschedprio() {
@@ -1166,10 +1114,6 @@ unsafe extern "C" fn putwc() {
     todo!("putwc")
 }
 
-#[no_mangle]
-unsafe extern "C" fn lockf() {
-    todo!("lockf")
-}
 #[no_mangle]
 unsafe extern "C" fn __strftime_l() {
     todo!("__strftime_l")

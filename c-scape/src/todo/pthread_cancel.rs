@@ -6,12 +6,8 @@
 
 use libc::c_int;
 
-#[no_mangle]
-unsafe extern "C" fn pthread_exit() -> c_int {
-    todo!("pthread_exit")
-}
-// taproot: pthread_cancel/pthread_setcanceltype moved to thread/mod.rs as
-// contract stubs
+// taproot: pthread_exit/pthread_cancel/pthread_setcanceltype moved to
+// thread/mod.rs
 #[no_mangle]
 unsafe extern "C" fn __pthread_register_cancel() {
     todo!("__pthread_register_cancel")

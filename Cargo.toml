@@ -21,4 +21,5 @@ members = [
   "c-gull",
   "eyra",
   "taproot",
+  "stub",
 ]

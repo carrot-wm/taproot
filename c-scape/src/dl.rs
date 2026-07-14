@@ -110,6 +110,14 @@ fn parse_line(d: &[u8], i: &mut usize) -> Option<Line> {
     })
 }
 
+/// glibc extension used by libgcc's unwinder as a fast path; "not found"
+/// sends callers to their dl_iterate_phdr fallback
+#[cfg(not(target_os = "wasi"))]
+#[no_mangle]
+unsafe extern "C" fn _dl_find_object(_address: *mut c_void, _result: *mut c_void) -> c_int {
+    -1
+}
+
 #[cfg(not(target_os = "wasi"))]
 #[no_mangle]
 unsafe extern "C" fn dladdr(addr: *const c_void, info: *mut libc::Dl_info) -> c_int {

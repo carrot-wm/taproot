@@ -1,0 +1,12 @@
+[package]
+name = "taproot-stub"
+version = "0.1.0"
+edition = "2021"
+description = "An empty cdylib staged under glibc's legacy sonames (libpthread.so.0, libdl.so.2, librt.so.1, ld-linux-x86-64.so.2) so a dlopened closure resolves them without reaching for a real glibc"
+license = "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT"
+repository = "https://github.com/carrot-wm/taproot"
+publish = false
+
+[lib]
+name = "taproot_stub"
+crate-type = ["cdylib"]

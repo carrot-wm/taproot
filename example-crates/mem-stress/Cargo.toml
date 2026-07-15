@@ -1,0 +1,29 @@
+[package]
+name = "mem-stress"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies.libc]
+path = "../../c-scape"
+default-features = false
+features = [
+    "take-charge",
+    "thread",
+    "call-main",
+    "malloc-via-rust-global-alloc",
+    "threadsafe-setenv",
+    "eh-personality-continue",
+    "panic-handler-trap",
+    "global-allocator",
+]
+package = "taproot-c-scape"
+
+[dependencies]
+errno = { version = "0.3.3", default-features = false }
+
+# This is just an example crate, and not part of the c-ward workspace.
+[workspace]
+
+[profile.release]
+debug = false

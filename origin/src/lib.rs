@@ -9,6 +9,8 @@
     all(debug_assertions, feature = "nightly"),
     feature(link_llvm_intrinsics)
 )]
+// weak fallback symbols (getauxval) need explicit linkage
+#![cfg_attr(feature = "nightly", feature(linkage))]
 
 #[cfg(all(feature = "alloc", not(feature = "rustc-dep-of-std")))]
 extern crate alloc;

@@ -7,7 +7,12 @@ use core::ptr::without_provenance_mut;
 
 // `getauxval` usually returns `unsigned long`, but we make it a pointer type
 // so that it preserves provenance.
+//
+// taproot: weak, so a libc's real getauxval (c-scape's reads
+// /proc/self/auxv) always wins the link. the strong-definition dodge via
+// archive-member ordering broke the moment codegen units reshuffled
 #[unsafe(no_mangle)]
+#[cfg_attr(feature = "nightly", linkage = "weak")]
 unsafe extern "C" fn getauxval(type_: c_ulong) -> *mut c_void {
     _getauxval(type_)
 }

@@ -25,6 +25,38 @@
 use core::arch::asm;
 use core::mem;
 
+// taproot divergence from compiler_builtins: the compile-time "ermsb" gate
+// never fires on a generic x86_64 target, which left every large copy on
+// the qword loop. erms is a cpuid bit (leaf 7, ebx bit 9) - probe it once
+// at first use and take "rep movsb" for sizable copies, where the
+// microcode picks the machine's best implementation (wider moves,
+// no-rfo fills). the probe is safe pre-relocation: rip-relative static,
+// no pointers, cpuid needs nothing.
+
+/// 0 = unprobed, 1 = plain, 2 = erms
+static REP_KIND: core::sync::atomic::AtomicU8 = core::sync::atomic::AtomicU8::new(0);
+
+/// under this, rep startup microcode costs more than the qword loop saves;
+/// fsrm machines tolerate less but the qword path is fine down there
+const ERMS_MIN: usize = 64;
+
+#[inline]
+fn have_erms() -> bool {
+    use core::sync::atomic::Ordering::Relaxed;
+    match REP_KIND.load(Relaxed) {
+        2 => true,
+        1 => false,
+        _ => {
+            let has = unsafe {
+                core::arch::x86_64::__cpuid(0).eax >= 7
+                    && core::arch::x86_64::__cpuid_count(7, 0).ebx & (1 << 9) != 0
+            };
+            REP_KIND.store(if has { 2 } else { 1 }, Relaxed);
+            has
+        }
+    }
+}
+
 #[inline(always)]
 #[cfg(target_feature = "ermsb")]
 pub unsafe fn copy_forward(dest: *mut u8, src: *const u8, count: usize) {
@@ -44,6 +76,16 @@ pub unsafe fn copy_forward(dest: *mut u8, src: *const u8, count: usize) {
 #[cfg(not(target_feature = "ermsb"))]
 pub unsafe fn copy_forward(mut dest: *mut u8, mut src: *const u8, count: usize) {
     unsafe {
+        if count >= ERMS_MIN && have_erms() {
+            asm!(
+                "rep movsb",
+                inout("rcx") count => _,
+                inout("rdi") dest => _,
+                inout("rsi") src => _,
+                options(att_syntax, nostack, preserves_flags)
+            );
+            return;
+        }
         let (pre_byte_count, qword_count, byte_count) = rep_param(dest, count);
         // Separating the blocks gives the compiler more freedom to reorder instructions.
         asm!(
@@ -118,6 +160,16 @@ pub unsafe fn set_bytes(dest: *mut u8, c: u8, count: usize) {
 #[cfg(not(target_feature = "ermsb"))]
 pub unsafe fn set_bytes(mut dest: *mut u8, c: u8, count: usize) {
     unsafe {
+        if count >= ERMS_MIN && have_erms() {
+            asm!(
+                "rep stosb",
+                inout("rcx") count => _,
+                inout("rdi") dest => _,
+                in("al") c,
+                options(att_syntax, nostack, preserves_flags)
+            );
+            return;
+        }
         let c = c as u64 * 0x0101_0101_0101_0101;
         let (pre_byte_count, qword_count, byte_count) = rep_param(dest, count);
         // Separating the blocks gives the compiler more freedom to reorder instructions.

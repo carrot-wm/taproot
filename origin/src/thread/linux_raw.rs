@@ -12,7 +12,7 @@ use crate::arch::{
 };
 #[cfg(feature = "thread-at-exit")]
 use alloc::boxed::Box;
-#[cfg(feature = "unstable-errno")]
+#[cfg(any(feature = "unstable-errno", feature = "thread-specifics"))]
 use core::cell::Cell;
 use core::cmp::max;
 use core::ffi::c_void;
@@ -98,6 +98,8 @@ struct ThreadData {
     thread_id: AtomicI32,
     #[cfg(feature = "unstable-errno")]
     errno_val: Cell<i32>,
+    #[cfg(feature = "thread-specifics")]
+    specifics: Cell<*mut c_void>,
     detached: AtomicU8,
     stack_addr: *mut c_void,
     stack_size: usize,
@@ -123,6 +125,8 @@ impl ThreadData {
             thread_id: AtomicI32::new(0),
             #[cfg(feature = "unstable-errno")]
             errno_val: Cell::new(0),
+            #[cfg(feature = "thread-specifics")]
+            specifics: Cell::new(null_mut()),
             detached: AtomicU8::new(INITIAL),
             stack_addr,
             stack_size,
@@ -1069,6 +1073,16 @@ pub unsafe fn set_current_id_after_a_fork(tid: ThreadId) {
 #[inline]
 pub fn errno_location() -> *mut i32 {
     unsafe { core::ptr::addr_of_mut!((*current_metadata()).thread.errno_val).cast::<i32>() }
+}
+
+/// Return the address of the thread-local specifics slot.
+///
+/// The slot starts null on every thread; the libc layer stores its
+/// per-thread pthread-key block here and owns the allocation.
+#[cfg(feature = "thread-specifics")]
+#[inline]
+pub fn specifics_location() -> *mut *mut c_void {
+    unsafe { core::ptr::addr_of_mut!((*current_metadata()).thread.specifics).cast::<*mut c_void>() }
 }
 
 /// Return the TLS address for the given `module` and `offset` for the current

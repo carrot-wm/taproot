@@ -112,6 +112,9 @@ thread-at-exit = [
     "alloc",
     "thread",
 ]
+# a per-thread pointer slot for the libc layer's pthread specifics,
+# next to errno: same pattern, same ownership story
+thread-specifics = []
 unstable-errno = ["thread"]
 
 [lib]

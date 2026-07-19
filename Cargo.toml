@@ -27,6 +27,11 @@ members = [
 
 # the fork carries a dso-init entry point and a load-bias fix so a dlopen'd
 # libc.so can create threads with the executable's tls layout
+# a rust panic inside a libc has nowhere sane to unwind to; abort. this
+# also spares the stub an eh_personality lang item on stable
+[profile.release]
+panic = "abort"
+
 # The cdylib must export the whole libc surface. rustc links dependency
 # rlibs without --whole-archive, so a #[no_mangle] entry whose codegen
 # unit nothing referenced would be skipped by archive extraction and

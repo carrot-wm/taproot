@@ -6,13 +6,10 @@
 //! lookup falls through to the preloaded taproot libc.so.6.
 
 #![no_std]
-#![feature(lang_items)]
 
+// abort panics (workspace release profile) want no personality item;
+// nothing in an empty library panics anyway
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
     loop {}
 }
-
-// nothing in an empty library unwinds; the item satisfies the linker
-#[lang = "eh_personality"]
-extern "C" fn eh_personality() {}

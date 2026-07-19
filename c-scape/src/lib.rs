@@ -107,6 +107,8 @@ mod termios_;
 mod thread;
 mod glibc_extras;
 mod time;
+#[cfg(target_arch = "x86_64")]
+pub mod va;
 
 #[cfg(feature = "deprecated-and-unimplemented")]
 mod deprecated;

@@ -44,9 +44,13 @@ unsafe impl rustix::ioctl::Ioctl for GenericIoctl {
     }
 }
 
+// taproot: fixed arity. One `c_long` third argument covers every request's
+// int and pointer forms (a single INTEGER-class slot either way, loaded
+// identically by variadic and fixed callers); each arm casts it to what its
+// request defines, and requests without an argument never look at it.
 #[cfg(not(target_os = "wasi"))]
 #[no_mangle]
-unsafe extern "C" fn ioctl(fd: c_int, request: c_long, mut args: ...) -> c_int {
+unsafe extern "C" fn ioctl(fd: c_int, request: c_long, arg: c_long) -> c_int {
     const TCGETS: c_long = libc::TCGETS as c_long;
     const FIONBIO: c_long = libc::FIONBIO as c_long;
     const TIOCINQ: c_long = libc::TIOCINQ as c_long;
@@ -58,14 +62,14 @@ unsafe extern "C" fn ioctl(fd: c_int, request: c_long, mut args: ...) -> c_int {
             let fd = BorrowedFd::borrow_raw(fd);
             match convert_res(rustix::termios::tcgetattr(fd)) {
                 Some(x) => {
-                    args.next_arg::<*mut rustix::termios::Termios>().write(x);
+                    (arg as *mut rustix::termios::Termios).write(x);
                     0
                 }
                 None => -1,
             }
         }
         FIONBIO | TIOCINQ => {
-            let ptr = args.next_arg::<*mut c_int>();
+            let ptr = arg as *mut c_int;
             let value = *ptr != 0;
             libc!(libc::ioctl(fd, libc::FIONBIO, value as c_int));
             let fd = BorrowedFd::borrow_raw(fd);
@@ -85,14 +89,14 @@ unsafe extern "C" fn ioctl(fd: c_int, request: c_long, mut args: ...) -> c_int {
                         ws_xpixel: size.ws_xpixel,
                         ws_ypixel: size.ws_ypixel,
                     };
-                    args.next_arg::<*mut libc::winsize>().write(size);
+                    (arg as *mut libc::winsize).write(size);
                     0
                 }
                 None => -1,
             }
         }
         FICLONE => {
-            let src_fd = args.next_arg::<c_int>();
+            let src_fd = arg as c_int;
             libc!(libc::ioctl(fd, libc::FICLONE as _, src_fd));
             let fd = BorrowedFd::borrow_raw(fd);
             let src_fd = BorrowedFd::borrow_raw(src_fd);
@@ -102,7 +106,7 @@ unsafe extern "C" fn ioctl(fd: c_int, request: c_long, mut args: ...) -> c_int {
             }
         }
         _ => {
-            let arg = args.next_arg::<*mut c_void>();
+            let arg = arg as *mut c_void;
             let fd = BorrowedFd::borrow_raw(fd);
             let generic = GenericIoctl {
                 opcode: request as rustix::ioctl::Opcode,

@@ -12,33 +12,47 @@ use libc::{c_long, c_void};
 
 // `syscall` usually returns `long`, but we make it a pointer type so that it
 // preserves provenance.
+//
+// taproot: fixed arity, six `c_long` slots after the number. A variadic
+// caller loads the same registers, and slots the caller never filled hold
+// garbage, which is harmless: each arm below reads only the arguments its
+// syscall defines.
 #[cfg(not(target_os = "wasi"))]
 #[no_mangle]
-unsafe extern "C" fn syscall(number: c_long, mut args: ...) -> *mut c_void {
+#[allow(unused_variables)] // which slots are read depends on the syscall-* features
+unsafe extern "C" fn syscall(
+    number: c_long,
+    a1: c_long,
+    a2: c_long,
+    a3: c_long,
+    a4: c_long,
+    a5: c_long,
+    a6: c_long,
+) -> *mut c_void {
     match number {
         #[cfg(feature = "syscall-read")]
         libc::SYS_read => {
-            let fd = args.arg::<c_int>();
-            let buf = args.arg::<*mut c_void>();
-            let count = args.arg::<size_t>();
+            let fd = a1 as c_int;
+            let buf = a2 as *mut c_void;
+            let count = a3 as size_t;
             without_provenance_mut(libc::read(fd, buf, count) as _)
         }
         #[cfg(feature = "syscall-write")]
         libc::SYS_write => {
-            let fd = args.arg::<c_int>();
-            let buf = args.arg::<*const c_void>();
-            let count = args.arg::<size_t>();
+            let fd = a1 as c_int;
+            let buf = a2 as *const c_void;
+            let count = a3 as size_t;
             without_provenance_mut(libc::write(fd, buf, count) as _)
         }
         #[cfg(feature = "syscall-open")]
         #[cfg(not(any(target_arch = "aarch64", target_arch = "riscv64")))]
         libc::SYS_open => {
-            let path = args.arg::<*const c_char>();
-            let flags = args.arg::<c_int>();
+            let path = a1 as *const c_char;
+            let flags = a2 as c_int;
             let fd = if ((flags & libc::O_CREAT) == libc::O_CREAT)
                 || ((flags & libc::O_TMPFILE) == libc::O_TMPFILE)
             {
-                let mode = args.arg::<libc::mode_t>();
+                let mode = a3 as libc::mode_t;
                 libc::open(path, flags, mode)
             } else {
                 libc::open(path, flags)
@@ -47,13 +61,13 @@ unsafe extern "C" fn syscall(number: c_long, mut args: ...) -> *mut c_void {
         }
         #[cfg(feature = "syscall-openat")]
         libc::SYS_openat => {
-            let dirfd = args.arg::<c_int>();
-            let path = args.arg::<*const c_char>();
-            let flags = args.arg::<c_int>();
+            let dirfd = a1 as c_int;
+            let path = a2 as *const c_char;
+            let flags = a3 as c_int;
             let fd = if ((flags & libc::O_CREAT) == libc::O_CREAT)
                 || ((flags & libc::O_TMPFILE) == libc::O_TMPFILE)
             {
-                let mode = args.arg::<libc::mode_t>();
+                let mode = a4 as libc::mode_t;
                 libc::openat(dirfd, path, flags, mode)
             } else {
                 libc::openat(dirfd, path, flags)
@@ -62,7 +76,7 @@ unsafe extern "C" fn syscall(number: c_long, mut args: ...) -> *mut c_void {
         }
         #[cfg(feature = "syscall-close")]
         libc::SYS_close => {
-            let fd = args.arg::<c_int>();
+            let fd = a1 as c_int;
             without_provenance_mut(libc::close(fd) as _)
         }
         #[cfg(feature = "syscall-getpid")]
@@ -71,27 +85,27 @@ unsafe extern "C" fn syscall(number: c_long, mut args: ...) -> *mut c_void {
         }
         #[cfg(feature = "syscall-statx")]
         libc::SYS_statx => {
-            let dirfd = args.arg::<c_int>();
-            let path = args.arg::<*const c_char>();
-            let flags = args.arg::<c_int>();
-            let mask = args.arg::<libc::c_uint>();
-            let statxbuf = args.arg::<*mut libc::statx>();
+            let dirfd = a1 as c_int;
+            let path = a2 as *const c_char;
+            let flags = a3 as c_int;
+            let mask = a4 as libc::c_uint;
+            let statxbuf = a5 as *mut libc::statx;
             without_provenance_mut(libc::statx(dirfd, path, flags, mask, statxbuf) as _)
         }
         libc::SYS_getrandom => {
-            let buf = args.next_arg::<*mut c_void>();
-            let len = args.next_arg::<usize>();
-            let flags = args.next_arg::<u32>();
+            let buf = a1 as *mut c_void;
+            let len = a2 as usize;
+            let flags = a3 as u32;
             without_provenance_mut(libc::getrandom(buf, len, flags) as _)
         }
         #[cfg(feature = "thread")]
         libc::SYS_futex => {
-            let uaddr = args.next_arg::<*mut u32>();
-            let futex_op = args.next_arg::<c_int>();
-            let val = args.next_arg::<u32>();
-            let timeout = args.next_arg::<*const libc::timespec>();
-            let uaddr2 = args.next_arg::<*mut u32>();
-            let val3 = args.next_arg::<u32>();
+            let uaddr = a1 as *mut u32;
+            let futex_op = a2 as c_int;
+            let val = a3 as u32;
+            let timeout = a4 as *const libc::timespec;
+            let uaddr2 = a5 as *mut u32;
+            let val3 = a6 as u32;
             without_provenance_mut(
                 futex(uaddr, futex_op, val, timeout, uaddr2, val3) as isize as usize
             )
@@ -103,31 +117,31 @@ unsafe extern "C" fn syscall(number: c_long, mut args: ...) -> *mut c_void {
         }
         #[cfg(feature = "syscall-epoll_create1")]
         libc::SYS_epoll_create1 => {
-            let flags = args.arg::<c_int>();
+            let flags = a1 as c_int;
             without_provenance_mut(libc::epoll_create(flags) as isize as usize)
         }
         #[cfg(feature = "syscall-timerfd_create")]
         libc::SYS_timerfd_create => {
-            let clockid = args.arg::<c_int>();
-            let flags = args.arg::<c_int>();
+            let clockid = a1 as c_int;
+            let flags = a2 as c_int;
             without_provenance_mut(libc::timerfd_create(clockid, flags) as isize as usize)
         }
         #[cfg(feature = "syscall-timerfd_settime")]
         libc::SYS_timerfd_settime => {
-            let fd = args.arg::<c_int>();
-            let flags = args.arg::<c_int>();
-            let new_value = args.arg::<*const libc::itimerspec>();
-            let old_value = args.arg::<*mut libc::itimerspec>();
+            let fd = a1 as c_int;
+            let flags = a2 as c_int;
+            let new_value = a3 as *const libc::itimerspec;
+            let old_value = a4 as *mut libc::itimerspec;
             without_provenance_mut(
                 libc::timerfd_settime(fd, flags, new_value, old_value) as isize as usize,
             )
         }
         #[cfg(feature = "syscall-utimensat")]
         libc::SYS_utimensat => {
-            let fd = args.arg::<c_int>();
-            let path = args.arg::<*const c_char>();
-            let times = args.arg::<*const libc::timespec>();
-            let flags = args.arg::<c_int>();
+            let fd = a1 as c_int;
+            let path = a2 as *const c_char;
+            let times = a3 as *const libc::timespec;
+            let flags = a4 as c_int;
             // On Linux, a NULL path means `utimensat` should behave like
             // `futimens`.
             if path.is_null() {
@@ -143,12 +157,12 @@ unsafe extern "C" fn syscall(number: c_long, mut args: ...) -> *mut c_void {
         }
         #[cfg(feature = "syscall-fdatasync")]
         libc::SYS_fdatasync => {
-            let fd = args.arg::<c_int>();
+            let fd = a1 as c_int;
             without_provenance_mut(libc::fdatasync(fd) as isize as usize)
         }
         #[cfg(feature = "syscall-syncfs")]
         libc::SYS_syncfs => {
-            let fd = args.arg::<c_int>();
+            let fd = a1 as c_int;
             without_provenance_mut(libc::syncfs(fd) as isize as usize)
         }
         #[cfg(feature = "syscall-sync")]
@@ -158,8 +172,8 @@ unsafe extern "C" fn syscall(number: c_long, mut args: ...) -> *mut c_void {
         }
         #[cfg(feature = "syscall-pipe2")]
         libc::SYS_pipe2 => {
-            let pipefd = args.arg::<*mut c_int>();
-            let flags = args.arg::<c_int>();
+            let pipefd = a1 as *mut c_int;
+            let flags = a2 as c_int;
             without_provenance_mut(libc::pipe2(pipefd, flags) as isize as usize)
         }
         libc::SYS_gettid => {
@@ -315,6 +329,7 @@ mod tests {
     #[test]
     fn test_syscall_utimensat() {
         use core::ptr::null_mut;
+        use libc::c_long;
         use rustix::fd::BorrowedFd;
         unsafe {
             let fd = libc::memfd_create(c"test".as_ptr(), 0);
@@ -329,8 +344,18 @@ mod tests {
                     tv_nsec: 46,
                 },
             ];
+            // A null path with flags 0 takes the futimens branch; the two
+            // trailing slots are the "garbage the caller never filled".
             assert_eq!(
-                syscall(libc::SYS_utimensat, fd, null::<u8>(), &times, 0),
+                super::syscall(
+                    libc::SYS_utimensat,
+                    fd as c_long,
+                    0,
+                    times.as_ptr() as c_long,
+                    0,
+                    0,
+                    0,
+                ),
                 null_mut()
             );
             let stat = rustix::fs::fstat(BorrowedFd::borrow_raw(fd)).unwrap();

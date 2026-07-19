@@ -185,9 +185,6 @@ impl VaArg for f64 {
 /// whole printf/execl/syslog/`__chk` surface. The declared return type
 /// (or none) must be INTEGER class or `f64`; it rides back through
 /// rax/xmm0 untouched.
-// Until the printf/execl/syslog conversions land on this macro, non-test
-// builds have no invocation in sight.
-#[allow(unused_macros)]
 macro_rules! vararg_entry {
     ($(#[$attr:meta])* unsafe extern "C" fn $name:ident(
         $a1:ident: $t1:ty, ...
@@ -226,7 +223,6 @@ macro_rules! vararg_entry {
 /// The emitter behind [`vararg_entry!`]: one naked entry, with the
 /// psABI-derived constants baked in. `gp` is `8 * named_gp_args` and
 /// `tag_reg` is the GP argument register after the last named one.
-#[allow(unused_macros)]
 macro_rules! __vararg_entry_emit {
     (
         [$($attr:tt)*] $name:ident, ($($arg:ident: $ty:ty),*), ($($ret:ty)?), $imp:path,
@@ -297,7 +293,6 @@ macro_rules! __vararg_entry_emit {
     };
 }
 
-#[allow(unused_imports)]
 pub(crate) use {__vararg_entry_emit, vararg_entry};
 
 #[cfg(test)]
@@ -305,7 +300,7 @@ mod tests {
     // `vararg_entry!` needs no import: `macro_rules!` scoping already
     // carries it through the rest of the file.
     use super::VaListTag;
-    use libc::{c_int, c_long, c_uint, c_void};
+    use libc::{c_char, c_int, c_long, c_uint, c_void};
 
     // The implementation halves: ordinary `extern "C"` functions that
     // receive the named arguments plus the tag the naked entry built.
@@ -404,6 +399,27 @@ mod tests {
         0
     }
 
+    unsafe extern "C" fn execle_shape_impl(out: *mut *const c_char, tag: *mut VaListTag) -> c_int {
+        // SAFETY: the fetch script is the execle loop shape its call site
+        // mirrors: `*const c_char`s up to and including a null terminator,
+        // then one trailing envp-style pointer, and `out` has room for all
+        // of them.
+        unsafe {
+            let tag = &mut *tag;
+            let mut count = 0;
+            loop {
+                let ptr = tag.arg::<*const c_char>();
+                *out.add(count) = ptr;
+                count += 1;
+                if ptr.is_null() {
+                    break;
+                }
+            }
+            *out.add(count) = tag.arg::<*const *const c_char>().cast();
+            count as c_int
+        }
+    }
+
     // The generated naked entries, one per named-argument count 1..=4.
 
     vararg_entry! {
@@ -445,6 +461,14 @@ mod tests {
             => mixed_impl
     }
 
+    vararg_entry! {
+        #[no_mangle]
+        unsafe extern "C" fn __taproot_va_test_execle_shape(
+            out: *mut *const c_char,
+            ...
+        ) -> c_int => execle_shape_impl
+    }
+
     /// The C-side view of the entries above. Living in a child module
     /// keeps these declarations from colliding with the definitions' item
     /// names; the linker pairs them up by symbol. Calling through these
@@ -452,7 +476,7 @@ mod tests {
     /// half of the variadic protocol (register assignment, AL, stack
     /// slots), and the naked entries must undo it exactly.
     mod decl {
-        use libc::{c_int, c_long};
+        use libc::{c_char, c_int, c_long};
 
         unsafe extern "C" {
             pub fn __taproot_va_test_sum_longs(count: c_int, ...) -> c_long;
@@ -471,6 +495,7 @@ mod tests {
                 ...
             ) -> c_long;
             pub fn __taproot_va_test_mixed(iout: *mut i64, fout: *mut f64, ...) -> c_int;
+            pub fn __taproot_va_test_execle_shape(out: *mut *const c_char, ...) -> c_int;
         }
     }
 
@@ -636,5 +661,42 @@ mod tests {
         assert_eq!(rc, 0);
         assert_eq!(iout, [11, 22, 33, 44, 55, 66]);
         assert_eq!(fout, [0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5]);
+    }
+
+    #[test]
+    fn the_execle_walk_collects_until_null_then_envp() {
+        // The execl/execle loop shape: one named argument, then `*const
+        // c_char`s until a null terminator, then (execle only) one more
+        // pointer. Six strings push the walk off the registers: rsi..r9
+        // carry the first five, and the sixth, the null and the envp
+        // pointer all come off the overflow area.
+        let argv = [
+            c"sh".as_ptr(),
+            c"-c".as_ptr(),
+            c"one".as_ptr(),
+            c"two".as_ptr(),
+            c"three".as_ptr(),
+            c"four".as_ptr(),
+        ];
+        let env = [c"X=1".as_ptr(), core::ptr::null()];
+        let envp: *const *const c_char = env.as_ptr();
+        let mut out = [core::ptr::null::<c_char>(); 8];
+        let walked = unsafe {
+            decl::__taproot_va_test_execle_shape(
+                out.as_mut_ptr(),
+                argv[0],
+                argv[1],
+                argv[2],
+                argv[3],
+                argv[4],
+                argv[5],
+                core::ptr::null::<c_char>(),
+                envp,
+            )
+        };
+        assert_eq!(walked, 7);
+        assert_eq!(&out[..6], &argv);
+        assert!(out[6].is_null());
+        assert_eq!(out[7], envp.cast::<c_char>());
     }
 }

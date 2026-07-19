@@ -68,16 +68,19 @@ unsafe extern "C" fn munmap(ptr: *mut c_void, len: size_t) -> c_int {
     }
 }
 
+// taproot: fixed arity. `new_address` reads the fifth argument slot whether
+// or not the caller filled it (variadic and fixed callers load it into the
+// same register); it is only used under MREMAP_FIXED, exactly when C
+// requires callers to pass it.
 #[no_mangle]
 unsafe extern "C" fn mremap(
     old_address: *mut c_void,
     old_size: size_t,
     new_size: size_t,
     flags: c_int,
-    mut args: ...
+    new_address: *mut c_void,
 ) -> *mut c_void {
     if (flags & libc::MREMAP_FIXED) == libc::MREMAP_FIXED {
-        let new_address = args.next_arg::<*mut c_void>();
         libc!(libc::mremap(
             old_address,
             old_size,

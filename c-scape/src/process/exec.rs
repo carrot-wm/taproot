@@ -9,10 +9,91 @@ use core::ptr::{copy_nonoverlapping, null_mut};
 use core::slice;
 
 use crate::env::set::load_environ;
+#[cfg(target_arch = "x86_64")]
+use crate::va::{vararg_entry, VaListTag};
 use crate::{convert_res, set_errno, Errno};
 
 use libc::{c_char, c_int};
 
+// execl/execle/execlp are true variadics: the argument list has no fixed
+// arity, so each is a `vararg_entry!` shim whose implementation walks
+// `*const c_char` arguments up to and including the null terminator (and,
+// for execle, one more envp pointer after it). C's first `arg` parameter is
+// fetched as the first walked argument rather than declared named: the walk
+// starts at the register after the path either way, and the loop stays
+// uniform.
+//
+// The walker in `crate::va` is x86_64-only (see its module docs), so other
+// architectures keep the nightly `extern "C" fn(..., ...)` variadic
+// definitions that predate the walker.
+
+#[cfg(target_arch = "x86_64")]
+vararg_entry! {
+    #[no_mangle]
+    unsafe extern "C" fn execl(path: *const c_char, ...) -> c_int => execl_impl
+}
+
+#[cfg(target_arch = "x86_64")]
+unsafe extern "C" fn execl_impl(path: *const c_char, tag: *mut VaListTag) -> c_int {
+    let tag = &mut *tag;
+    let mut vec = Vec::new();
+
+    loop {
+        let ptr = tag.arg::<*const c_char>();
+        vec.push(ptr);
+        if ptr.is_null() {
+            break;
+        }
+    }
+
+    execv(path, vec.as_ptr())
+}
+
+#[cfg(target_arch = "x86_64")]
+vararg_entry! {
+    #[no_mangle]
+    unsafe extern "C" fn execle(path: *const c_char, ...) -> c_int => execle_impl
+}
+
+#[cfg(target_arch = "x86_64")]
+unsafe extern "C" fn execle_impl(path: *const c_char, tag: *mut VaListTag) -> c_int {
+    let tag = &mut *tag;
+    let mut vec = Vec::new();
+
+    let envp = loop {
+        let ptr = tag.arg::<*const c_char>();
+        vec.push(ptr);
+        if ptr.is_null() {
+            break tag.arg::<*const *const c_char>();
+        }
+    };
+
+    execve(path, vec.as_ptr(), envp)
+}
+
+#[cfg(target_arch = "x86_64")]
+vararg_entry! {
+    #[no_mangle]
+    unsafe extern "C" fn execlp(file: *const c_char, ...) -> c_int => execlp_impl
+}
+
+#[cfg(target_arch = "x86_64")]
+unsafe extern "C" fn execlp_impl(file: *const c_char, tag: *mut VaListTag) -> c_int {
+    let tag = &mut *tag;
+    let mut vec = Vec::new();
+
+    loop {
+        let ptr = tag.arg::<*const c_char>();
+        vec.push(ptr);
+        if ptr.is_null() {
+            break;
+        }
+    }
+
+    execvp(file, vec.as_ptr())
+}
+
+#[cfg(not(target_arch = "x86_64"))]
 #[no_mangle]
 unsafe extern "C" fn execl(path: *const c_char, arg: *const c_char, mut argv: ...) -> c_int {
     let mut vec = Vec::new();
@@ -29,6 +110,7 @@ unsafe extern "C" fn execl(path: *const c_char, arg: *const c_char, mut argv: ..
     execv(path, vec.as_ptr())
 }
 
+#[cfg(not(target_arch = "x86_64"))]
 #[no_mangle]
 unsafe extern "C" fn execle(path: *const c_char, arg: *const c_char, mut argv: ...) -> c_int {
     let mut vec = Vec::new();
@@ -45,6 +127,7 @@ unsafe extern "C" fn execle(path: *const c_char, arg: *const c_char, mut argv: .
     execve(path, vec.as_ptr(), envp)
 }
 
+#[cfg(not(target_arch = "x86_64"))]
 #[no_mangle]
 unsafe extern "C" fn execlp(file: *const c_char, arg: *const c_char, mut argv: ...) -> c_int {
     let mut vec = Vec::new();

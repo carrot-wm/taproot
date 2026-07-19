@@ -7,15 +7,20 @@ use libc::{c_char, c_int, mode_t};
 
 use crate::convert_res;
 
-// This has to be a macro because we can't delegate C variadic functions.
-// This allows us to reduce code duplication as all of the `open` variants
-// should morally delegate to openat64.
+// Shared body for the `open` variants, which all morally delegate to
+// openat64; a macro (rather than a helper fn) lets each entry keep its own
+// `libc!` signature check.
+//
+// taproot: fixed arity. A variadic caller and a fixed-arity callee agree on
+// where the leading INTEGER-class arguments live (SysV x86_64), so `mode`
+// reads whatever sits in the third argument slot; when the caller didn't
+// pass one that's garbage, which is fine because it is only inspected under
+// O_CREAT/O_TMPFILE, exactly when C requires callers to pass it.
 macro_rules! openat_impl {
-    ($fd:expr, $pathname:ident, $flags:ident, $args:ident) => {{
+    ($fd:expr, $pathname:ident, $flags:ident, $mode:ident) => {{
         let flags = OFlags::from_bits($flags as _).unwrap();
         let mode = if flags.contains(OFlags::CREATE) || flags.contains(OFlags::TMPFILE) {
-            let mode: libc::mode_t = $args.next_arg();
-            Mode::from_bits((mode & !libc::S_IFMT) as _).unwrap()
+            Mode::from_bits(($mode & !libc::S_IFMT) as _).unwrap()
         } else {
             Mode::empty()
         };
@@ -34,17 +39,17 @@ macro_rules! openat_impl {
 // we open all files with O_LARGEFILE as that is what Rustix does
 // hopefully this doesn't break any C programs
 #[no_mangle]
-unsafe extern "C" fn open(pathname: *const c_char, flags: c_int, mut args: ...) -> c_int {
-    libc!(libc::open(pathname, flags, args));
+unsafe extern "C" fn open(pathname: *const c_char, flags: c_int, mode: mode_t) -> c_int {
+    libc!(libc::open(pathname, flags, mode));
 
-    openat_impl!(CWD, pathname, flags, args)
+    openat_impl!(CWD, pathname, flags, mode)
 }
 
 #[no_mangle]
-unsafe extern "C" fn open64(pathname: *const c_char, flags: c_int, mut args: ...) -> c_int {
-    libc!(libc::open64(pathname, flags, args));
+unsafe extern "C" fn open64(pathname: *const c_char, flags: c_int, mode: mode_t) -> c_int {
+    libc!(libc::open64(pathname, flags, mode));
 
-    openat_impl!(CWD, pathname, flags, args)
+    openat_impl!(CWD, pathname, flags, mode)
 }
 
 // same behavior with `O_LARGEFILE` as open/open64
@@ -53,11 +58,11 @@ unsafe extern "C" fn openat(
     fd: c_int,
     pathname: *const c_char,
     flags: c_int,
-    mut args: ...
+    mode: mode_t,
 ) -> c_int {
-    libc!(libc::openat(fd, pathname, flags, args));
+    libc!(libc::openat(fd, pathname, flags, mode));
 
-    openat_impl!(BorrowedFd::borrow_raw(fd), pathname, flags, args)
+    openat_impl!(BorrowedFd::borrow_raw(fd), pathname, flags, mode)
 }
 
 #[no_mangle]
@@ -65,11 +70,11 @@ unsafe extern "C" fn openat64(
     fd: c_int,
     pathname: *const c_char,
     flags: c_int,
-    mut args: ...
+    mode: mode_t,
 ) -> c_int {
-    libc!(libc::openat64(fd, pathname, flags, args));
+    libc!(libc::openat64(fd, pathname, flags, mode));
 
-    openat_impl!(BorrowedFd::borrow_raw(fd), pathname, flags, args)
+    openat_impl!(BorrowedFd::borrow_raw(fd), pathname, flags, mode)
 }
 
 #[no_mangle]

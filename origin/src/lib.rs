@@ -2,7 +2,6 @@
 #![deny(missing_docs)]
 #![no_std]
 #![cfg_attr(docsrs, feature(doc_cfg))]
-#![cfg_attr(feature = "experimental-relocate", feature(cfg_relocation_model))]
 // On nightly, enable llvm intrinsics for additional debug asserts.
 #![cfg_attr(all(debug_assertions, feature = "nightly"), allow(internal_features))]
 #![cfg_attr(
@@ -40,7 +39,7 @@ mod arch;
 #[cfg(all(feature = "take-charge", feature = "log"))]
 mod log;
 #[cfg(all(feature = "experimental-relocate", feature = "origin-start"))]
-#[cfg(relocation_model = "pic")]
+#[cfg(origin_relocation_pic)]
 mod relocate;
 
 #[cfg_attr(feature = "take-charge", path = "program/linux_raw.rs")]

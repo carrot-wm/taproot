@@ -4,9 +4,9 @@ rust-version = "1.85"
 name = "taproot-origin"
 version = "0.26.4"
 authors = ["Dan Gohman <dev@sunfishcode.online>"]
-build = false
 include = [
     "src",
+    "build.rs",
     "Cargo.toml",
     "COPYRIGHT",
     "LICENSE*",

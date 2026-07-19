@@ -6,10 +6,10 @@
 ))]
 use core::arch::asm;
 #[cfg(all(feature = "experimental-relocate", feature = "origin-start"))]
-#[cfg(relocation_model = "pic")]
+#[cfg(origin_relocation_pic)]
 use linux_raw_sys::elf::Elf_Ehdr;
 #[cfg(all(feature = "experimental-relocate", feature = "origin-start"))]
-#[cfg(relocation_model = "pic")]
+#[cfg(origin_relocation_pic)]
 use linux_raw_sys::general::{__NR_mprotect, PROT_READ};
 #[cfg(feature = "take-charge")]
 #[cfg(feature = "signal")]
@@ -86,7 +86,7 @@ pub(super) fn dynamic_table_addr() -> *const linux_raw_sys::elf::Elf_Dyn {
 
 /// Compute the dynamic address of `__ehdr_start`.
 #[cfg(all(feature = "experimental-relocate", feature = "origin-start"))]
-#[cfg(relocation_model = "pic")]
+#[cfg(origin_relocation_pic)]
 pub(super) fn ehdr_addr() -> *const Elf_Ehdr {
     let addr;
     unsafe {
@@ -118,7 +118,7 @@ pub(super) fn ehdr_addr() -> *const Elf_Ehdr {
 /// relocation purposes. And, `ptr` must contain the address of a memory
 /// location that can be loaded from.
 #[cfg(all(feature = "experimental-relocate", feature = "origin-start"))]
-#[cfg(relocation_model = "pic")]
+#[cfg(origin_relocation_pic)]
 #[inline]
 pub(super) unsafe fn relocation_load(ptr: usize) -> usize {
     {
@@ -151,7 +151,7 @@ pub(super) unsafe fn relocation_load(ptr: usize) -> usize {
 /// relocation purposes. And, `ptr` must contain the address of a memory
 /// location that can be stored to.
 #[cfg(all(feature = "experimental-relocate", feature = "origin-start"))]
-#[cfg(relocation_model = "pic")]
+#[cfg(origin_relocation_pic)]
 #[inline]
 pub(super) unsafe fn relocation_store(ptr: usize, value: usize) {
     unsafe {
@@ -181,7 +181,7 @@ pub(super) unsafe fn relocation_store(ptr: usize, value: usize) {
 /// relocation purposes. And, `ptr` must contain the address of a memory
 /// location that can be marked readonly.
 #[cfg(all(feature = "experimental-relocate", feature = "origin-start"))]
-#[cfg(relocation_model = "pic")]
+#[cfg(origin_relocation_pic)]
 #[inline]
 pub(super) unsafe fn relocation_mprotect_readonly(ptr: usize, len: usize) {
     unsafe {

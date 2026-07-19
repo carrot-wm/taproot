@@ -96,7 +96,7 @@ pub(super) unsafe extern "C" fn entry(mem: *mut usize) -> ! {
 
         // Before doing anything else, perform dynamic relocations.
         #[cfg(all(feature = "experimental-relocate", feature = "origin-start"))]
-        #[cfg(relocation_model = "pic")]
+        #[cfg(origin_relocation_pic)]
         {
             crate::relocate::relocate(envp);
         }

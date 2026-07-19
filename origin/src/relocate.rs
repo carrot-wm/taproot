@@ -33,6 +33,10 @@ const DT_RELR: usize = 36;
 #[cfg(debug_assertions)]
 const DT_RELRENT: usize = 37;
 
+// `linux_raw_sys::elf` doesn't define the TLS relocation types yet either.
+#[cfg(target_arch = "x86_64")]
+const R_X86_64_TPOFF64: u32 = 18;
+
 // We have to override the debug_assert! family of macros to trap rather than
 // panic as panicking doesn't work this early on. See the docs of [relocate]
 // for more info.
@@ -149,7 +153,9 @@ pub(super) unsafe fn relocate(envp: *mut *mut u8) {
 
         // This is case 2) or 4). We need to do all `R_RELATIVE` relocations.
         // There should be no other kind of relocation because we are either a
-        // static PIE binary or a dynamic linker compiled with `-Bsymbolic`.
+        // static PIE binary or a dynamic linker compiled with `-Bsymbolic`,
+        // except that initial-exec TLS accesses (which prebuilt std binaries
+        // contain) leave `R_X86_64_TPOFF64` entries as well.
 
         // Compute the dynamic address of `_DYNAMIC`.
         let dynv = dynamic_table_addr();
@@ -169,6 +175,11 @@ pub(super) unsafe fn relocate(envp: *mut *mut u8) {
         // way of representing relative relocations.
         let mut relr_ptr: *const Elf_Relr = null();
         let mut relr_total_size = 0;
+
+        // The dynamic symbol table, which we need in order to resolve
+        // symbol-indexed TLS relocations.
+        #[cfg(target_arch = "x86_64")]
+        let mut symtab_ptr: *const Elf_Sym = null();
 
         // Look through the `Elf_Dyn` entries to find the location and
         // size of the relocation table(s).
@@ -192,6 +203,13 @@ pub(super) unsafe fn relocate(envp: *mut *mut u8) {
                 #[cfg(debug_assertions)]
                 DT_RELENT => debug_assert_eq!(d_un.d_val as usize, size_of::<Elf_Rel>()),
 
+                // We found the dynamic symbol table. As above, model this as
+                // `with_exposed_provenance`.
+                #[cfg(target_arch = "x86_64")]
+                DT_SYMTAB => symtab_ptr = base.byte_add(d_un.d_ptr).cast::<Elf_Sym>(),
+                #[cfg(all(debug_assertions, target_arch = "x86_64"))]
+                DT_SYMENT => debug_assert_eq!(d_un.d_val as usize, size_of::<Elf_Sym>()),
+
                 // We found a relr table. As above, model this as
                 // `with_exposed_provenance`.
                 DT_RELR => relr_ptr = base.byte_add(d_un.d_ptr).cast::<Elf_Relr>(),
@@ -205,6 +223,35 @@ pub(super) unsafe fn relocate(envp: *mut *mut u8) {
                 _ => (),
             }
         }
+
+        // Find the `PT_TLS` segment, if present. TLS relocations store
+        // offsets from the thread pointer, and in TLS variant II the
+        // executable's TLS block is the first one below the thread pointer,
+        // at `tp - round_up(p_memsz, p_align)`. This matches both the layout
+        // that `thread/linux_raw.rs` allocates and the offset that glibc's
+        // `_dl_determine_tlsoffset` assigns to the first module.
+        #[cfg(target_arch = "x86_64")]
+        let tls_offset = {
+            let phentsize = the_ehdr.e_phentsize as usize;
+            let mut current_phdr = base.byte_add(the_ehdr.e_phoff).cast::<Elf_Phdr>();
+            let phdrs_end = current_phdr.byte_add(the_ehdr.e_phnum as usize * phentsize);
+            let mut tls_memsz = 0;
+            let mut tls_align = 1;
+            while current_phdr != phdrs_end {
+                let phdr = &*current_phdr;
+                current_phdr = current_phdr.byte_add(phentsize);
+
+                if phdr.p_type == PT_TLS {
+                    tls_memsz = phdr.p_memsz;
+                    if phdr.p_align > 1 {
+                        tls_align = phdr.p_align;
+                    }
+                }
+            }
+
+            // Round the size up to the alignment; `p_align` is a power of two.
+            tls_memsz.wrapping_add(tls_align - 1) & !(tls_align - 1)
+        };
 
         // Perform the rela relocations.
         let mut current_rela = rela_ptr;
@@ -221,6 +268,26 @@ pub(super) unsafe fn relocate(envp: *mut *mut u8) {
                 R_RELATIVE => {
                     let addend = rela.r_addend;
                     let reloc_value = addend.wrapping_add(offset);
+                    relocation_store(reloc_addr, reloc_value);
+                }
+                // Initial-exec TLS: the slot receives the offset of the TLS
+                // location from the thread pointer, which for variant II is
+                // negative: the TLS block starts `tls_offset` bytes below
+                // the thread pointer and the symbol's `st_value` is its
+                // offset within that block.
+                #[cfg(target_arch = "x86_64")]
+                R_X86_64_TPOFF64 => {
+                    let sym = (rela.r_info >> 32) as usize;
+                    let st_value = if sym == 0 {
+                        0
+                    } else if symtab_ptr != null() {
+                        (*symtab_ptr.add(sym)).st_value
+                    } else {
+                        // A symbol-indexed relocation with no symbol table;
+                        // trap without panicking, as below.
+                        trap()
+                    };
+                    let reloc_value = st_value.wrapping_add(rela.r_addend).wrapping_sub(tls_offset);
                     relocation_store(reloc_addr, reloc_value);
                 }
                 // Trap the process without panicking as panicking requires

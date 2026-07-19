@@ -8,7 +8,7 @@
 use crate::{set_errno, Errno};
 use alloc::borrow::ToOwned;
 use alloc::vec::Vec;
-use core::cell::SyncUnsafeCell;
+use crate::sync_cell::SyncUnsafeCell;
 use core::ptr::null_mut;
 use core::slice;
 use libc::{c_char, c_int};

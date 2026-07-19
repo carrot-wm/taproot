@@ -1,6 +1,6 @@
 //! Library routines working with Nul-Terminated Byte Sequences (NTBS).
 
-use core::cell::SyncUnsafeCell;
+use crate::sync_cell::SyncUnsafeCell;
 use core::ffi::CStr;
 use core::ptr;
 use libc::{c_char, c_int, c_uchar, malloc, memcpy, size_t};

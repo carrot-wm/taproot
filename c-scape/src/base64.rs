@@ -1,4 +1,4 @@
-use core::cell::SyncUnsafeCell;
+use crate::sync_cell::SyncUnsafeCell;
 use libc::{c_char, c_long};
 
 #[no_mangle]

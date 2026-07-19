@@ -1,7 +1,7 @@
 //! Termios APIs
 
 use crate::{convert_res, set_errno, Errno};
-use core::cell::SyncUnsafeCell;
+use crate::sync_cell::SyncUnsafeCell;
 use core::mem::{size_of, transmute, zeroed};
 use core::ops::Index;
 use core::ptr::copy_nonoverlapping;

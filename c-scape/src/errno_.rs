@@ -1,6 +1,6 @@
 use alloc::borrow::ToOwned;
 use alloc::format;
-use core::cell::SyncUnsafeCell;
+use crate::sync_cell::SyncUnsafeCell;
 use core::ptr::{copy_nonoverlapping, null_mut};
 use libc::{c_char, c_int};
 

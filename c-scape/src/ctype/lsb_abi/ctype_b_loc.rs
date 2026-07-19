@@ -1,4 +1,4 @@
-use core::cell::SyncUnsafeCell;
+use crate::sync_cell::SyncUnsafeCell;
 use core::ptr::addr_of;
 
 use libc::c_ushort;

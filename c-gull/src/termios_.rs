@@ -6,7 +6,7 @@
 
 use crate::convert_res;
 use alloc::ffi::CString;
-use core::cell::SyncUnsafeCell;
+use c_scape::sync_cell::SyncUnsafeCell;
 use core::ptr::{copy_nonoverlapping, null_mut};
 use libc::{c_char, c_int, size_t};
 use rustix::fd::BorrowedFd;

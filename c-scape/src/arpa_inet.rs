@@ -1,5 +1,5 @@
 use alloc::string::ToString;
-use core::cell::SyncUnsafeCell;
+use crate::sync_cell::SyncUnsafeCell;
 use core::ffi::CStr;
 use core::net::{Ipv4Addr, Ipv6Addr};
 use core::ptr::{addr_of, copy_nonoverlapping, null};

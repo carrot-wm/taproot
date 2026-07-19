@@ -8,7 +8,6 @@
 // Nightly Rust features that we depend on.
 #![feature(thread_local)] // for `pthread_getspecific` etc.
 #![feature(c_variadic)] // for `printf`, `ioctl`, etc.
-#![feature(sync_unsafe_cell)] // for lots of libc static variables
 #![feature(linkage)] // for `malloc` etc.
 // Disable some common warnings.
 #![allow(unexpected_cfgs)]
@@ -35,6 +34,7 @@ mod use_libc;
 #[cfg(not(target_os = "wasi"))]
 mod at_fork;
 mod error_str;
+pub mod sync_cell;
 mod sync_ptr;
 
 // Selected libc-compatible interfaces.

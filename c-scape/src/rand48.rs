@@ -1,6 +1,6 @@
 use libc::{c_double, c_long, c_ushort};
 
-use core::cell::SyncUnsafeCell;
+use crate::sync_cell::SyncUnsafeCell;
 use core::ptr::addr_of;
 
 #[cfg(test)]

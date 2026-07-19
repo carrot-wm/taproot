@@ -7,7 +7,7 @@
 //! This file doesn't yet implement enumeration, but the `getent` command does,
 //! so it's theoretically doable.
 
-use core::cell::SyncUnsafeCell;
+use c_scape::sync_cell::SyncUnsafeCell;
 use core::ffi::CStr;
 use core::mem::{align_of, zeroed};
 use core::ptr::{addr_of_mut, copy_nonoverlapping, null, null_mut, write};

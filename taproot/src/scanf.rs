@@ -5,11 +5,38 @@
 //! it every GPU is rejected. This covers the conversions they use: `d u i o x X
 //! s c n %`, a `*` suppressor, field widths, and `h`/`hh`/`l`/`ll` length
 //! modifiers, matching literals and skipping whitespace like C scanf.
+//!
+//! On x86_64 the variadic entries are c-scape `vararg_entry!` shims and the
+//! parser walks a `VaListTag`; other architectures keep the nightly `VaList`
+//! definitions that predate the walker.
 
-use core::ffi::{c_char, c_int, c_void, VaList};
+#[cfg(target_arch = "x86_64")]
+use c_scape::va::{vararg_entry, VaListTag};
+use core::ffi::{c_char, c_int, c_void};
+#[cfg(not(target_arch = "x86_64"))]
+use core::ffi::VaList;
 
 unsafe extern "C" {
     fn fread(ptr: *mut c_void, size: usize, nmemb: usize, stream: *mut c_void) -> usize;
+}
+
+/// The argument walk the parser consumes; every conversion stores through a
+/// pointer, so it only ever fetches thin `*mut` pointers (INTEGER class).
+#[cfg(target_arch = "x86_64")]
+type Scanner<'a> = &'a mut VaListTag;
+#[cfg(not(target_arch = "x86_64"))]
+type Scanner<'a> = VaList<'a>;
+
+#[cfg(target_arch = "x86_64")]
+#[inline]
+unsafe fn next_ptr<T>(ap: &mut Scanner<'_>) -> *mut T {
+    unsafe { ap.arg::<*mut T>() }
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+#[inline]
+unsafe fn next_ptr<T>(ap: &mut Scanner<'_>) -> *mut T {
+    unsafe { ap.next_arg::<*mut T>() }
 }
 
 #[inline]
@@ -30,7 +57,7 @@ fn digit_val(b: u8, base: i32) -> Option<i32> {
 }
 
 // core parser over a NUL-terminated input string
-unsafe fn vsscanf(input: *const c_char, fmt: *const c_char, mut ap: VaList) -> c_int {
+unsafe fn vsscanf(input: *const c_char, fmt: *const c_char, mut ap: Scanner<'_>) -> c_int {
     let mut ii = 0usize; // input index
     let mut fi = 0usize; // fmt index
     let mut matched: c_int = 0;
@@ -106,7 +133,7 @@ unsafe fn vsscanf(input: *const c_char, fmt: *const c_char, mut ap: VaList) -> c
             }
             b'n' => {
                 if !suppress {
-                    let p = unsafe { ap.next_arg::<*mut c_int>() };
+                    let p = unsafe { next_ptr::<c_int>(&mut ap) };
                     unsafe { *p = ii as c_int };
                 }
             }
@@ -174,7 +201,7 @@ unsafe fn vsscanf(input: *const c_char, fmt: *const c_char, mut ap: VaList) -> c
                 let dst = if suppress {
                     core::ptr::null_mut()
                 } else {
-                    unsafe { ap.next_arg::<*mut c_char>() }
+                    unsafe { next_ptr::<c_char>(&mut ap) }
                 };
                 let mut n = 0usize;
                 while n < wcap {
@@ -199,7 +226,7 @@ unsafe fn vsscanf(input: *const c_char, fmt: *const c_char, mut ap: VaList) -> c
                 let dst = if suppress {
                     core::ptr::null_mut()
                 } else {
-                    unsafe { ap.next_arg::<*mut c_char>() }
+                    unsafe { next_ptr::<c_char>(&mut ap) }
                 };
                 let mut n = 0usize;
                 while n < count {
@@ -227,25 +254,51 @@ unsafe fn vsscanf(input: *const c_char, fmt: *const c_char, mut ap: VaList) -> c
     matched
 }
 
-unsafe fn store_int(ap: &mut VaList, val: u64, len: i32) {
+unsafe fn store_int(ap: &mut Scanner<'_>, val: u64, len: i32) {
     unsafe {
         match len {
-            -2 => *ap.next_arg::<*mut i8>() = val as i8,
-            -1 => *ap.next_arg::<*mut i16>() = val as i16,
-            0 => *ap.next_arg::<*mut i32>() = val as i32,
-            _ => *ap.next_arg::<*mut i64>() = val as i64,
+            -2 => *next_ptr::<i8>(ap) = val as i8,
+            -1 => *next_ptr::<i16>(ap) = val as i16,
+            0 => *next_ptr::<i32>(ap) = val as i32,
+            _ => *next_ptr::<i64>(ap) = val as i64,
         }
     }
 }
 
+#[cfg(target_arch = "x86_64")]
+unsafe extern "C" fn sscanf_impl(s: *const c_char, fmt: *const c_char, tag: *mut VaListTag) -> c_int {
+    unsafe { vsscanf(s, fmt, &mut *tag) }
+}
+
+#[cfg(target_arch = "x86_64")]
+vararg_entry! {
+    #[no_mangle]
+    unsafe extern "C" fn sscanf(s: *const c_char, fmt: *const c_char, ...) -> c_int => sscanf_impl
+}
+#[cfg(target_arch = "x86_64")]
+vararg_entry! {
+    #[no_mangle]
+    unsafe extern "C" fn __isoc23_sscanf(s: *const c_char, fmt: *const c_char, ...) -> c_int
+        => sscanf_impl
+}
+#[cfg(target_arch = "x86_64")]
+vararg_entry! {
+    #[no_mangle]
+    unsafe extern "C" fn __isoc99_sscanf(s: *const c_char, fmt: *const c_char, ...) -> c_int
+        => sscanf_impl
+}
+
+#[cfg(not(target_arch = "x86_64"))]
 #[unsafe(no_mangle)]
 unsafe extern "C" fn sscanf(s: *const c_char, fmt: *const c_char, args: ...) -> c_int {
     unsafe { vsscanf(s, fmt, args) }
 }
+#[cfg(not(target_arch = "x86_64"))]
 #[unsafe(no_mangle)]
 unsafe extern "C" fn __isoc23_sscanf(s: *const c_char, fmt: *const c_char, args: ...) -> c_int {
     unsafe { vsscanf(s, fmt, args) }
 }
+#[cfg(not(target_arch = "x86_64"))]
 #[unsafe(no_mangle)]
 unsafe extern "C" fn __isoc99_sscanf(s: *const c_char, fmt: *const c_char, args: ...) -> c_int {
     unsafe { vsscanf(s, fmt, args) }
@@ -254,20 +307,48 @@ unsafe extern "C" fn __isoc99_sscanf(s: *const c_char, fmt: *const c_char, args:
 // fscanf: read the stream into a bounded buffer, then scan it. libdrm/Mesa use
 // fscanf only for one-shot reads of tiny sysfs files, so reading to the buffer
 // cap and scanning is sufficient.
-unsafe fn fscanf_buf(stream: *mut c_void, fmt: *const c_char, ap: VaList) -> c_int {
+unsafe fn fscanf_buf(stream: *mut c_void, fmt: *const c_char, ap: Scanner<'_>) -> c_int {
     let mut buf = [0u8; 4096];
     let n = unsafe { fread(buf.as_mut_ptr() as *mut c_void, 1, buf.len() - 1, stream) };
     buf[n.min(buf.len() - 1)] = 0;
     unsafe { vsscanf(buf.as_ptr() as *const c_char, fmt, ap) }
 }
+
+#[cfg(target_arch = "x86_64")]
+unsafe extern "C" fn fscanf_impl(stream: *mut c_void, fmt: *const c_char, tag: *mut VaListTag) -> c_int {
+    unsafe { fscanf_buf(stream, fmt, &mut *tag) }
+}
+
+#[cfg(target_arch = "x86_64")]
+vararg_entry! {
+    #[no_mangle]
+    unsafe extern "C" fn fscanf(stream: *mut c_void, fmt: *const c_char, ...) -> c_int
+        => fscanf_impl
+}
+#[cfg(target_arch = "x86_64")]
+vararg_entry! {
+    #[no_mangle]
+    unsafe extern "C" fn __isoc23_fscanf(stream: *mut c_void, fmt: *const c_char, ...) -> c_int
+        => fscanf_impl
+}
+#[cfg(target_arch = "x86_64")]
+vararg_entry! {
+    #[no_mangle]
+    unsafe extern "C" fn __isoc99_fscanf(stream: *mut c_void, fmt: *const c_char, ...) -> c_int
+        => fscanf_impl
+}
+
+#[cfg(not(target_arch = "x86_64"))]
 #[unsafe(no_mangle)]
 unsafe extern "C" fn fscanf(stream: *mut c_void, fmt: *const c_char, args: ...) -> c_int {
     unsafe { fscanf_buf(stream, fmt, args) }
 }
+#[cfg(not(target_arch = "x86_64"))]
 #[unsafe(no_mangle)]
 unsafe extern "C" fn __isoc23_fscanf(stream: *mut c_void, fmt: *const c_char, args: ...) -> c_int {
     unsafe { fscanf_buf(stream, fmt, args) }
 }
+#[cfg(not(target_arch = "x86_64"))]
 #[unsafe(no_mangle)]
 unsafe extern "C" fn __isoc99_fscanf(stream: *mut c_void, fmt: *const c_char, args: ...) -> c_int {
     unsafe { fscanf_buf(stream, fmt, args) }

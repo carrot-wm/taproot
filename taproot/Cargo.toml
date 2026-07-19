@@ -19,3 +19,7 @@ eyra = { package = "taproot-eyra", path = "../eyra", version = "0.22.3", feature
 # arrive through eyra's take-charge graph; fs covers the /proc read)
 origin = { package = "taproot-origin", path = "../origin", version = "0.26.3", default-features = false }
 rustix = { version = "1.0", default-features = false, features = ["fs"] }
+# scanf's variadic entries ride c-scape's va walker on x86_64 (the crate
+# is already in the link through eyra; features arrive through eyra's
+# take-charge graph, as with origin above)
+c-scape = { package = "taproot-c-scape", path = "../c-scape", version = "0.22.4", default-features = false }

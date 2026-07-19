@@ -27,3 +27,15 @@ members = [
 
 # the fork carries a dso-init entry point and a load-bias fix so a dlopen'd
 # libc.so can create threads with the executable's tls layout
+# The cdylib must export the whole libc surface. rustc links dependency
+# rlibs without --whole-archive, so a #[no_mangle] entry whose codegen
+# unit nothing referenced would be skipped by archive extraction and
+# silently vanish from the .so's dynamic table (stable and nightly
+# partition differently; stable 1.96 dropped 30 math/int symbols). One
+# codegen unit per libc crate makes extraction all-or-nothing.
+[profile.release.package.taproot-c-scape]
+codegen-units = 1
+[profile.release.package.taproot-c-gull]
+codegen-units = 1
+[profile.release.package.taproot-origin]
+codegen-units = 1

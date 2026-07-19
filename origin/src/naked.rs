@@ -1,4 +1,4 @@
-//! Limited wrapper around and polyfill for the `#[naked]` attribute.
+//! Limited wrapper around the `#[naked]` attribute.
 //!
 //! # Example
 //!
@@ -28,10 +28,12 @@
 
 #![allow(unused_macros)]
 
-/// `#[naked]` is nightly-only. We use it when we can, and fall back to
-/// `global_asm` otherwise. This macro supports a limited subset of the
-/// features of `#[naked]`.
-#[cfg(feature = "nightly")]
+/// `#[unsafe(naked)]` has been stable since Rust 1.88, so the entry is a
+/// real Rust function on every toolchain (a `global_asm!` fallback used to
+/// live here; a naked fn is better than asm because rustc knows the
+/// symbol, which keeps it in a cdylib's exported-symbol list where the
+/// linker's version script would demote an asm-defined global to local).
+/// This macro supports a limited subset of the features of `#[naked]`.
 macro_rules! naked_fn {
     (
         $doc:literal;
@@ -48,31 +50,5 @@ macro_rules! naked_fn {
                 $($label = $kind $path),*
             )
         }
-    };
-}
-
-/// `#[naked]` is nightly-only. We use it when we can, and fall back to
-/// `global_asm` otherwise. This macro supports a limited subset of the
-/// features of `#[naked]`.
-#[cfg(not(feature = "nightly"))]
-macro_rules! naked_fn {
-    (
-        $doc:literal;
-        $vis:vis fn $name:ident $args:tt -> $ret:ty;
-        $($code:literal),*;
-        $($label:ident = $kind:ident $path:path),*
-    ) => {
-        unsafe extern "C" {
-            #[doc = $doc]
-            $vis fn $name $args -> $ret;
-        }
-        core::arch::global_asm!(
-            concat!(".global ", stringify!($name)),
-            concat!(".type ", stringify!($name), ", @function"),
-            concat!(stringify!($name), ":"),
-            $($code),*,
-            concat!(".size ", stringify!($name), ", .-", stringify!($name)),
-            $($label = $kind $path),*
-        );
     };
 }

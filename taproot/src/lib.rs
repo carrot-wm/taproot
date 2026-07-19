@@ -1,6 +1,8 @@
 //! A standalone pure-Rust `libc.so.6`: link in Eyra (origin + c-gull) so a
 //! dlopened C library (Mesa / libdrm) binds its libc against Rust, not glibc.
-#![feature(c_variadic)]
+// On x86_64 the scanf entries are c-scape va-walker shims and need no
+// nightly gate; other architectures keep the nightly variadic definitions.
+#![cfg_attr(not(target_arch = "x86_64"), feature(c_variadic))]
 
 extern crate eyra;
 

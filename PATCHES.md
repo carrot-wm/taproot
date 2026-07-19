@@ -22,11 +22,19 @@ their commit instead.
 | `c-scape/src/jmp.rs` | `_setjmp`/`_longjmp`/`__sigsetjmp` become real `#[no_mangle]` naked trampolines, plus a new `__longjmp_chk` (frame check skipped, like the `__*printf_chk` family) | the upstream `.set` assembler aliases never reach a cdylib's `.dynsym` - rustc's version script exports only the `#[no_mangle]` items it knows. glibc headers make every caller import the alias names (`setjmp` is a macro for `_setjmp`, fortified `longjmp` becomes `__longjmp_chk`), so mesa's spirv-to-nir error handling hit a silently-unresolved PLT slot (elf_loader skips unresolvable JUMP_SLOTs without erroring, even under RTLD_NOW) and the first real shader compile jumped to an unmapped link-time address. |
 | ICD gap fill (one commit): `c-scape` mkostemp64/mkstemps64, rewinddir ungated from `todo`, syslog family no-ops, pthread_cancel (ENOSYS) + pthread_setcanceltype (no-op success), SysV shm contract stubs; `taproot` `__progname`/`__progname_full` | every remaining strong UND symbol of `libvulkan_intel.so` resolves - elf_loader leaves unresolvable JUMP_SLOTs at their link-time value *silently* even under RTLD_NOW, so any missing symbol is a jump-to-unmapped-memory crash deferred until first call. Mesa's disk cache writes entries via `mkostemp64`/`mkstemps64` (a cold cache - i.e. any mesa rebuild - hits this right after the first shader compile) and evicts via `rewinddir`. |
 | errno sweep (one commit): `c-scape` time, fcntl, net sockopts, pthread mutex kinds, sysconf/pathconf/prctl, dlsym-with-handle, setuid/setgid/setgroups, posix_spawn stubs; `c-gull` resolve + nss | every C-ABI dispatch fallthrough answers its contract error (EINVAL, ENOPROTOOPT, ENOSYS, EAI_*, null, or the site's own failure arm) instead of `unimplemented!()`/`todo!()`/`panic!()` | a libc that aborts the process on an unknown input is a compositor-killer: three separate mesa/kbvm probes have taken the session down this way (`__printf_chk`, `getauxval(AT_SECURE)`, `dlsym(__epoll_pwait2_time64)`). Kept as real panics: hex-float `strtod`, `longjmp`, `___tls_get_addr`, internal invariants - places where a silently wrong answer beats nothing. |
+| `.cargo/config.toml` + `tools/link-shim.sh` (new) | links run through a shim that renames the WEAK HIDDEN math/int builtin aliases (`ceil`, `sqrt`, `__clzdi2`, ...) inside a copy of the toolchain's prebuilt compiler-builtins | ELF linking merges the most constraining visibility per symbol name, so on stable rustc those dead weak copies demote c-scape's own default-visibility definitions to hidden and the cdylib silently stops exporting the C math surface; mesa binds `ceil`/`sqrt` eagerly (`-fno-plt`), so every lost export is a deferred jump-to-unmapped crash. No-op on toolchains whose compiler-builtins lacks the aliases (the pinned nightly). |
+| root `Cargo.toml` | `[profile.release.package.*] codegen-units = 1` for taproot-origin, taproot-c-scape and taproot-c-gull | rustc links dependency rlibs without `--whole-archive`, so a `#[no_mangle]` entry whose codegen unit nothing referenced is never extracted from the archive and silently vanishes from the `.so`; one unit per libc crate makes extraction all-or-nothing. |
+| `origin/src/naked.rs` | `naked_fn!` always emits a real `#[unsafe(naked)]` function (stable since Rust 1.88); the `global_asm!` fallback is gone | rustc's cdylib version script exports only symbols it knows, so the asm-defined `_start`/`return_from_signal_handler` fell out of `.dynsym` once the origin "nightly" feature was dropped. |
 
 ## Toolchain
-Built on the fork's pinned **`nightly-2026-06-11`** (`rust-toolchain.toml`, or the
-`flake.nix` fenix pin). On this nightly `VaList::arg` was renamed to `next_arg`,
-so c-scape's `ioctl` and the cdylib's `scanf.rs` use `next_arg`.
+The fork builds on stable Rust (1.96+) for x86_64; the pinned
+**`nightly-2026-06-11`** (`rust-toolchain.toml`, or the `flake.nix` fenix pin)
+remains the devshell toolchain and the only path for other architectures,
+whose variadic definitions still need `feature(c_variadic)` (on that nightly
+`VaList::arg` is named `next_arg`, which the non-x86_64 arms use). On x86_64
+every variadic entry point is fixed arity or a `c-scape/src/va.rs` walker
+shim, and the printf family formats through the vendored
+`c-scape/src/printf_impl` port of printf-compat 0.4.0.
 
 ## Build
 From the **`taproot/` member directory** (cargo reads `.cargo/config.toml` from the

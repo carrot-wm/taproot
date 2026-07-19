@@ -1,0 +1,7 @@
+# Links run behind tools/link-shim.sh: it renames the WEAK HIDDEN
+# math/int builtin aliases in a copy of the toolchain's prebuilt
+# compiler-builtins, which would otherwise visibility-demote the
+# libc's own exports (ceil, sqrt, __clzdi2, ...) out of the cdylib's
+# dynamic table on stable rustc. See the shim's header and PATCHES.md.
+[target.x86_64-unknown-linux-gnu]
+linker = "tools/link-shim.sh"

@@ -4,22 +4,31 @@
 //! always lock. And the `printf` family of functions currently always call
 //! `malloc`.
 //!
-//! The `printf` family of functions currently uses the `printf_compat` crate,
-//! which [has differences with glibc]. And because we're using it in `no_std`
-//! mode here, it only supports UTF-8 output.
+//! The `printf` family of functions currently uses the `printf_compat`
+//! formatter (the crate on non-x86_64, the crate's vendored port in
+//! `crate::printf_impl` on x86_64), which [has differences with glibc].
+//! And because we're using it in `no_std` mode here, it only supports
+//! UTF-8 output.
 //!
 //! [has differences with glibc]: https://docs.rs/printf-compat/*/printf_compat/output/fn.fmt_write.html#differences
 
 use crate::convert_res;
+#[cfg(target_arch = "x86_64")]
+use crate::printf_impl::{format, output};
+#[cfg(target_arch = "x86_64")]
+use crate::va::{vararg_entry, VaListTag};
 #[cfg(feature = "thread")]
 use crate::GetThreadId;
 use alloc::boxed::Box;
 use alloc::string::String;
 use core::cmp::min;
-use core::ffi::{CStr, VaList};
+#[cfg(not(target_arch = "x86_64"))]
+use core::ffi::VaList;
+use core::ffi::CStr;
 use core::ptr::{addr_of, addr_of_mut, copy_nonoverlapping, null_mut};
 use errno::{set_errno, Errno};
 use libc::{c_char, c_int, c_long, c_void, off64_t, off_t, size_t};
+#[cfg(not(target_arch = "x86_64"))]
 use printf_compat::{format, output};
 use rustix::fd::IntoRawFd;
 use rustix::fs::{Mode, OFlags};
@@ -713,11 +722,201 @@ unsafe fn parse_oflags(mode: *const c_char) -> Option<OFlags> {
     Some(oflags)
 }
 
+// The printf entries are true variadics. On x86_64 each is a
+// `vararg_entry!` shim whose naked entry performs the callee half of the
+// variadic protocol and calls the matching `v*` function directly: the
+// `v*` functions' `va_list` parameter is `*mut VaListTag` there (C's
+// `va_list` is a pointer to the tag at the ABI level, so the exported
+// signature is unchanged), which is exactly the implementation signature
+// the shim expects. The `va` walker is x86_64-only (see its module docs),
+// so other architectures keep the nightly `extern "C" fn(..., ...)`
+// variadic definitions that predate the walker.
+
+#[cfg(target_arch = "x86_64")]
+vararg_entry! {
+    #[no_mangle]
+    unsafe extern "C" fn printf(fmt: *const c_char, ...) -> c_int => vprintf
+}
+
+#[cfg(target_arch = "x86_64")]
+#[no_mangle]
+unsafe extern "C" fn vprintf(fmt: *const c_char, va_list: *mut VaListTag) -> c_int {
+    //libc!(libc::vprintf(fmt, va_list));
+
+    vfprintf(stdout, fmt, va_list)
+}
+
+#[cfg(target_arch = "x86_64")]
+vararg_entry! {
+    #[no_mangle]
+    unsafe extern "C" fn sprintf(ptr: *mut c_char, fmt: *const c_char, ...) -> c_int => vsprintf
+}
+
+#[cfg(target_arch = "x86_64")]
+#[no_mangle]
+unsafe extern "C" fn vsprintf(
+    ptr: *mut c_char,
+    fmt: *const c_char,
+    va_list: *mut VaListTag,
+) -> c_int {
+    //libc!(libc::vsprintf(ptr, fmt, va_list));
+
+    let mut out = String::new();
+    let num_bytes = format(fmt, &mut *va_list, output::fmt_write(&mut out));
+    if num_bytes < 0 {
+        return num_bytes;
+    }
+    debug_assert_eq!(out.len(), num_bytes as usize);
+
+    let copy_len = num_bytes as usize + 1;
+    if copy_len > 0 {
+        out.push('\0');
+
+        copy_nonoverlapping(out.as_ptr(), ptr.cast(), copy_len);
+    }
+
+    num_bytes
+}
+
+#[cfg(target_arch = "x86_64")]
+vararg_entry! {
+    #[no_mangle]
+    unsafe extern "C" fn snprintf(
+        ptr: *mut c_char,
+        len: usize,
+        fmt: *const c_char,
+        ...
+    ) -> c_int => vsnprintf
+}
+
+#[cfg(target_arch = "x86_64")]
+#[no_mangle]
+unsafe extern "C" fn vsnprintf(
+    ptr: *mut c_char,
+    len: usize,
+    fmt: *const c_char,
+    va_list: *mut VaListTag,
+) -> c_int {
+    //libc!(libc::vsnprintf(ptr, len, fmt, va_list));
+
+    let mut out = String::new();
+    let num_bytes = format(fmt, &mut *va_list, output::fmt_write(&mut out));
+    if num_bytes < 0 {
+        return num_bytes;
+    }
+    debug_assert_eq!(out.len(), num_bytes as usize);
+
+    let copy_len = min(num_bytes as usize + 1, len);
+    if copy_len > 0 {
+        out.push('\0');
+        let mut out = out.into_bytes();
+        out[copy_len - 1] = b'\0';
+
+        copy_nonoverlapping(out.as_ptr(), ptr.cast(), copy_len);
+    }
+
+    num_bytes
+}
+
+#[cfg(target_arch = "x86_64")]
+vararg_entry! {
+    #[no_mangle]
+    unsafe extern "C" fn dprintf(fd: c_int, fmt: *const c_char, ...) -> c_int => vdprintf
+}
+
+#[cfg(target_arch = "x86_64")]
+#[no_mangle]
+unsafe extern "C" fn vdprintf(fd: c_int, fmt: *const c_char, va_list: *mut VaListTag) -> c_int {
+    //libc!(libc::vdprintf(fd, fmt, va_list));
+
+    let mut out = String::new();
+    let num_bytes = format(fmt, &mut *va_list, output::fmt_write(&mut out));
+    if num_bytes < 0 {
+        return num_bytes;
+    }
+    debug_assert_eq!(out.len(), num_bytes as usize);
+
+    let bytes = out.into_bytes();
+    let mut remaining = &bytes[..];
+    while !remaining.is_empty() {
+        match libc::write(fd, remaining.as_ptr().cast(), remaining.len()) {
+            -1 => {
+                if errno::errno().0 != libc::EINTR {
+                    return -1;
+                }
+            }
+            n => remaining = &remaining[n as usize..],
+        }
+    }
+
+    num_bytes
+}
+
+#[cfg(target_arch = "x86_64")]
+vararg_entry! {
+    #[no_mangle]
+    unsafe extern "C" fn fprintf(file: *mut libc::FILE, fmt: *const c_char, ...) -> c_int
+        => vfprintf
+}
+
+#[cfg(target_arch = "x86_64")]
+#[no_mangle]
+unsafe extern "C" fn vfprintf(
+    file: *mut libc::FILE,
+    fmt: *const c_char,
+    va_list: *mut VaListTag,
+) -> c_int {
+    //libc!(libc::vfprintf(file, fmt, va_list));
+
+    let mut file = (*file.cast::<FILE>()).locked.lock();
+
+    let r = vdprintf(file.fd, fmt, va_list);
+
+    if r == -1 {
+        file.error = true;
+    }
+
+    r
+}
+
+#[cfg(target_arch = "x86_64")]
+#[no_mangle]
+unsafe extern "C" fn vasprintf(
+    strp: *mut *mut c_char,
+    fmt: *const c_char,
+    va_list: *mut VaListTag,
+) -> c_int {
+    // `va_copy`: measure on a copy of the tag so the caller's list still
+    // sits at the first argument for the formatting pass.
+    let mut measure = *va_list;
+    let len = vsnprintf(null_mut(), 0, fmt, &mut measure);
+    if len < 0 {
+        return -1;
+    }
+
+    let ptr = libc::malloc(len as usize + 1).cast::<c_char>();
+    if ptr.is_null() {
+        return -1;
+    }
+
+    *strp = ptr;
+    vsnprintf(ptr, len as usize + 1, fmt, va_list)
+}
+
+#[cfg(target_arch = "x86_64")]
+vararg_entry! {
+    #[no_mangle]
+    unsafe extern "C" fn asprintf(strp: *mut *mut c_char, fmt: *const c_char, ...) -> c_int
+        => vasprintf
+}
+
+#[cfg(not(target_arch = "x86_64"))]
 #[no_mangle]
 unsafe extern "C" fn printf(fmt: *const c_char, args: ...) -> c_int {
     vprintf(fmt, args)
 }
 
+#[cfg(not(target_arch = "x86_64"))]
 #[no_mangle]
 unsafe extern "C" fn vprintf(fmt: *const c_char, va_list: VaList<'_>) -> c_int {
     //libc!(libc::vprintf(fmt, va_list));
@@ -725,11 +924,13 @@ unsafe extern "C" fn vprintf(fmt: *const c_char, va_list: VaList<'_>) -> c_int {
     vfprintf(stdout, fmt, va_list)
 }
 
+#[cfg(not(target_arch = "x86_64"))]
 #[no_mangle]
 unsafe extern "C" fn sprintf(ptr: *mut c_char, fmt: *const c_char, args: ...) -> c_int {
     vsprintf(ptr, fmt, args)
 }
 
+#[cfg(not(target_arch = "x86_64"))]
 #[no_mangle]
 unsafe extern "C" fn vsprintf(ptr: *mut c_char, fmt: *const c_char, va_list: VaList<'_>) -> c_int {
     //libc!(libc::vsprintf(ptr, fmt, va_list));
@@ -751,6 +952,7 @@ unsafe extern "C" fn vsprintf(ptr: *mut c_char, fmt: *const c_char, va_list: VaL
     num_bytes
 }
 
+#[cfg(not(target_arch = "x86_64"))]
 #[no_mangle]
 unsafe extern "C" fn snprintf(
     ptr: *mut c_char,
@@ -761,6 +963,7 @@ unsafe extern "C" fn snprintf(
     vsnprintf(ptr, len, fmt, args)
 }
 
+#[cfg(not(target_arch = "x86_64"))]
 #[no_mangle]
 unsafe extern "C" fn vsnprintf(
     ptr: *mut c_char,
@@ -789,11 +992,13 @@ unsafe extern "C" fn vsnprintf(
     num_bytes
 }
 
+#[cfg(not(target_arch = "x86_64"))]
 #[no_mangle]
 unsafe extern "C" fn dprintf(fd: c_int, fmt: *const c_char, args: ...) -> c_int {
     vdprintf(fd, fmt, args)
 }
 
+#[cfg(not(target_arch = "x86_64"))]
 #[no_mangle]
 unsafe extern "C" fn vdprintf(fd: c_int, fmt: *const c_char, va_list: VaList<'_>) -> c_int {
     //libc!(libc::vdprintf(fd, fmt, va_list));
@@ -821,11 +1026,13 @@ unsafe extern "C" fn vdprintf(fd: c_int, fmt: *const c_char, va_list: VaList<'_>
     num_bytes
 }
 
+#[cfg(not(target_arch = "x86_64"))]
 #[no_mangle]
 unsafe extern "C" fn fprintf(file: *mut libc::FILE, fmt: *const c_char, args: ...) -> c_int {
     vfprintf(file, fmt, args)
 }
 
+#[cfg(not(target_arch = "x86_64"))]
 #[no_mangle]
 unsafe extern "C" fn vfprintf(
     file: *mut libc::FILE,
@@ -845,6 +1052,7 @@ unsafe extern "C" fn vfprintf(
     r
 }
 
+#[cfg(not(target_arch = "x86_64"))]
 #[no_mangle]
 unsafe extern "C" fn vasprintf(
     strp: *mut *mut c_char,
@@ -865,6 +1073,7 @@ unsafe extern "C" fn vasprintf(
     vsnprintf(ptr, len as usize + 1, fmt, va_list)
 }
 
+#[cfg(not(target_arch = "x86_64"))]
 #[no_mangle]
 unsafe extern "C" fn asprintf(strp: *mut *mut c_char, fmt: *const c_char, args: ...) -> c_int {
     vasprintf(strp, fmt, args)
@@ -887,6 +1096,14 @@ unsafe extern "C" fn perror(user_message: *const c_char) {
     if user_message.to_bytes().is_empty() {
         let _ = fputs(errno_message.as_ptr(), stderr);
     } else {
+        // On x86_64 the `fprintf` item above is the fixed-arity naked
+        // entry, so make a real C variadic call through a declaration
+        // (calling variadics is stable; rustc performs the caller half
+        // of the protocol). The declaration binds to our own export on
+        // every architecture.
+        unsafe extern "C" {
+            fn fprintf(file: *mut libc::FILE, fmt: *const c_char, ...) -> c_int;
+        }
         let _ = fprintf(
             stderr,
             c"%s: %s\n".as_ptr(),
@@ -899,6 +1116,19 @@ unsafe extern "C" fn perror(user_message: *const c_char) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The C-side view of the variadic entries: on x86_64 the Rust items
+    /// are fixed-arity naked shims, so the tests call through real
+    /// variadic declarations, which bind to our exports on every
+    /// architecture.
+    mod decl {
+        use libc::{c_char, c_int};
+
+        unsafe extern "C" {
+            pub fn sprintf(ptr: *mut c_char, fmt: *const c_char, ...) -> c_int;
+            pub fn snprintf(ptr: *mut c_char, len: usize, fmt: *const c_char, ...) -> c_int;
+        }
+    }
 
     #[test]
     fn test_fputs() {
@@ -931,7 +1161,7 @@ mod tests {
     fn test_sprintf() {
         let mut buf = [b'_'; 16];
         let r = unsafe {
-            sprintf(
+            decl::sprintf(
                 buf.as_mut_ptr().cast(),
                 c"hello %s".as_ptr(),
                 c"world".as_ptr(),
@@ -943,12 +1173,12 @@ mod tests {
 
     #[test]
     fn test_snprintf() {
-        let r = unsafe { snprintf(null_mut(), 0, c"hello %s".as_ptr(), c"world".as_ptr()) };
+        let r = unsafe { decl::snprintf(null_mut(), 0, c"hello %s".as_ptr(), c"world".as_ptr()) };
         assert_eq!(r, 11);
 
         let mut buf = [b'_'; 16];
         let r = unsafe {
-            snprintf(
+            decl::snprintf(
                 buf.as_mut_ptr().cast(),
                 0,
                 c"hello %s".as_ptr(),
@@ -960,7 +1190,7 @@ mod tests {
 
         let mut buf = [b'_'; 16];
         let r = unsafe {
-            snprintf(
+            decl::snprintf(
                 buf.as_mut_ptr().cast(),
                 1,
                 c"hello %s".as_ptr(),
@@ -972,7 +1202,7 @@ mod tests {
 
         let mut buf = [b'_'; 16];
         let r = unsafe {
-            snprintf(
+            decl::snprintf(
                 buf.as_mut_ptr().cast(),
                 15,
                 c"hello %s".as_ptr(),
@@ -984,7 +1214,7 @@ mod tests {
 
         let mut buf = [b'_'; 16];
         let r = unsafe {
-            snprintf(
+            decl::snprintf(
                 buf.as_mut_ptr().cast(),
                 15,
                 c"hello big %s".as_ptr(),

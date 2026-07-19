@@ -185,11 +185,15 @@ impl VaArg for f64 {
 /// whole printf/execl/syslog/`__chk` surface. The declared return type
 /// (or none) must be INTEGER class or `f64`; it rides back through
 /// rax/xmm0 untouched.
+///
+/// Exported (macro_export) so the taproot cdylib crate can generate its
+/// scanf-family entries with the same emitter.
+#[macro_export]
 macro_rules! vararg_entry {
     ($(#[$attr:meta])* unsafe extern "C" fn $name:ident(
         $a1:ident: $t1:ty, ...
     ) $(-> $ret:ty)? => $imp:path) => {
-        $crate::va::__vararg_entry_emit! {
+        $crate::__vararg_entry_emit! {
             [$(#[$attr])*] $name, ($a1: $t1), ($($ret)?), $imp,
             gp = 8, tag_reg = "rsi"
         }
@@ -197,7 +201,7 @@ macro_rules! vararg_entry {
     ($(#[$attr:meta])* unsafe extern "C" fn $name:ident(
         $a1:ident: $t1:ty, $a2:ident: $t2:ty, ...
     ) $(-> $ret:ty)? => $imp:path) => {
-        $crate::va::__vararg_entry_emit! {
+        $crate::__vararg_entry_emit! {
             [$(#[$attr])*] $name, ($a1: $t1, $a2: $t2), ($($ret)?), $imp,
             gp = 16, tag_reg = "rdx"
         }
@@ -205,7 +209,7 @@ macro_rules! vararg_entry {
     ($(#[$attr:meta])* unsafe extern "C" fn $name:ident(
         $a1:ident: $t1:ty, $a2:ident: $t2:ty, $a3:ident: $t3:ty, ...
     ) $(-> $ret:ty)? => $imp:path) => {
-        $crate::va::__vararg_entry_emit! {
+        $crate::__vararg_entry_emit! {
             [$(#[$attr])*] $name, ($a1: $t1, $a2: $t2, $a3: $t3), ($($ret)?), $imp,
             gp = 24, tag_reg = "rcx"
         }
@@ -213,7 +217,7 @@ macro_rules! vararg_entry {
     ($(#[$attr:meta])* unsafe extern "C" fn $name:ident(
         $a1:ident: $t1:ty, $a2:ident: $t2:ty, $a3:ident: $t3:ty, $a4:ident: $t4:ty, ...
     ) $(-> $ret:ty)? => $imp:path) => {
-        $crate::va::__vararg_entry_emit! {
+        $crate::__vararg_entry_emit! {
             [$(#[$attr])*] $name, ($a1: $t1, $a2: $t2, $a3: $t3, $a4: $t4), ($($ret)?), $imp,
             gp = 32, tag_reg = "r8"
         }
@@ -223,6 +227,8 @@ macro_rules! vararg_entry {
 /// The emitter behind [`vararg_entry!`]: one naked entry, with the
 /// psABI-derived constants baked in. `gp` is `8 * named_gp_args` and
 /// `tag_reg` is the GP argument register after the last named one.
+#[macro_export]
+#[doc(hidden)]
 macro_rules! __vararg_entry_emit {
     (
         [$($attr:tt)*] $name:ident, ($($arg:ident: $ty:ty),*), ($($ret:ty)?), $imp:path,
@@ -293,7 +299,12 @@ macro_rules! __vararg_entry_emit {
     };
 }
 
-pub(crate) use {__vararg_entry_emit, vararg_entry};
+// Path-based imports for the crate's own callers and for the taproot
+// cdylib crate; `#[macro_export]` also places both at the crate root,
+// which is the `$crate` path the expansion rides on.
+#[doc(hidden)]
+pub use __vararg_entry_emit;
+pub use vararg_entry;
 
 #[cfg(test)]
 mod tests {

@@ -34,13 +34,18 @@ rand = { version = "0.9.0", default-features = false }
 rustix-dlmalloc = { version = "0.2.1", optional = true }
 rustix-openpty = "0.2.0"
 bitflags = { version = "2.4.1", default-features = false }
-printf-compat = { version = "0.4.0", default-features = false }
 num-complex = { version = "0.4.4", default-features = false, features = ["libm"] }
 posix-regex = { version = "0.1.1", features = ["no_std"] }
 
 # Special dependencies used in rustc-dep-of-std mode.
 core = { version = "1.0.0", optional = true, package = "rustc-std-workspace-core" }
 alloc = { version = "1.0.0", optional = true, package = "rustc-std-workspace-alloc" }
+
+# On x86_64 the printf family formats through the vendored port in
+# src/printf_impl (stable, no VaList); other architectures still format
+# through the printf-compat crate on the nightly VaList path.
+[target.'cfg(not(target_arch = "x86_64"))'.dependencies]
+printf-compat = { version = "0.4.0", default-features = false }
 
 # Enable "libc" and don't depend on "spin".
 # TODO: Eventually, we should propose a `fde-phdr-rustix` backend option to

@@ -5,16 +5,12 @@
 // themselves (loop-idiom recognition). Without this, strcpy/strcat compile down
 // to `mov %rdi,%rax; ret` - the copy is eliminated - in a cdylib/LTO build.
 #![no_builtins]
-// Nightly Rust features that we depend on. The printf family in stdio.rs
-// (take-charge only) holds the last x86_64 variadic definitions; every
-// other x86_64 entry point is fixed arity or a va.rs walker, so x86_64
-// coexist builds no longer need the gate. Other architectures don't have
-// the va.rs walker, so exec.rs/syslog.rs fall back to nightly variadics
-// there regardless of feature.
-#![cfg_attr(
-    any(feature = "take-charge", not(target_arch = "x86_64")),
-    feature(c_variadic)
-)]
+// Nightly Rust features that we depend on. On x86_64 there are none, on
+// any feature set: every variadic entry point is fixed arity or a va.rs
+// walker shim, and the printf family formats through the vendored
+// printf_impl port. Other architectures don't have the va.rs walker, so
+// stdio.rs/exec.rs fall back to nightly variadics there.
+#![cfg_attr(not(target_arch = "x86_64"), feature(c_variadic))]
 // Disable some common warnings.
 #![allow(unexpected_cfgs)]
 // Don't warn if `try_into()` is fallible on some targets.
@@ -89,6 +85,8 @@ mod nss;
 mod path;
 mod pause;
 mod posix_spawn;
+#[cfg(target_arch = "x86_64")]
+pub mod printf_impl;
 #[cfg(not(target_os = "wasi"))]
 mod process;
 mod process_;

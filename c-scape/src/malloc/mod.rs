@@ -110,7 +110,6 @@ unsafe fn tagged_dealloc(ptr: *mut u8) {
     }
 }
 
-#[linkage = "weak"]
 #[no_mangle]
 unsafe extern "C" fn malloc(size: usize) -> *mut c_void {
     libc!(libc::malloc(size));
@@ -142,7 +141,6 @@ unsafe extern "C" fn malloc(size: usize) -> *mut c_void {
     ret.cast()
 }
 
-#[linkage = "weak"]
 #[no_mangle]
 unsafe extern "C" fn realloc(old: *mut c_void, size: usize) -> *mut c_void {
     libc!(libc::realloc(old, size));
@@ -184,7 +182,6 @@ unsafe extern "C" fn reallocarray(old: *mut c_void, nmemb: size_t, size: size_t)
     realloc(old, product)
 }
 
-#[linkage = "weak"]
 #[no_mangle]
 unsafe extern "C" fn calloc(nmemb: usize, size: usize) -> *mut c_void {
     libc!(libc::calloc(nmemb, size));
@@ -252,7 +249,6 @@ unsafe extern "C" fn memalign(alignment: usize, size: usize) -> *mut c_void {
     ptr.cast()
 }
 
-#[linkage = "weak"]
 #[no_mangle]
 unsafe extern "C" fn aligned_alloc(alignment: size_t, size: size_t) -> *mut c_void {
     //libc!(libc::aligned_alloc(alignment, size));
@@ -281,7 +277,6 @@ unsafe extern "C" fn valloc(size: size_t) -> *mut c_void {
     memalign(crate::process_::page_size(), size)
 }
 
-#[linkage = "weak"]
 #[no_mangle]
 unsafe extern "C" fn free(ptr: *mut c_void) {
     libc!(libc::free(ptr));

@@ -8,7 +8,6 @@
 // Nightly Rust features that we depend on.
 #![feature(thread_local)] // for `pthread_getspecific` etc.
 #![feature(c_variadic)] // for `printf`, `ioctl`, etc.
-#![feature(linkage)] // for `malloc` etc.
 // Disable some common warnings.
 #![allow(unexpected_cfgs)]
 // Don't warn if `try_into()` is fallible on some targets.

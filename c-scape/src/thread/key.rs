@@ -1,4 +1,5 @@
 use alloc::boxed::Box;
+use core::alloc::Layout;
 use core::cell::Cell;
 use core::ptr::{null, null_mut};
 use core::sync::atomic::{AtomicU32, Ordering};
@@ -24,15 +25,6 @@ struct ValueWithEpoch {
     data: *mut c_void,
 }
 
-impl ValueWithEpoch {
-    const fn new() -> Self {
-        ValueWithEpoch {
-            epoch: 0,
-            data: null_mut(),
-        }
-    }
-}
-
 static KEY_DATA: RwLock<KeyData> = RwLock::new(KeyData {
     next_key: 0,
     destructors: [None; PTHREAD_KEYS_MAX as usize],
@@ -41,14 +33,60 @@ static KEY_DATA: RwLock<KeyData> = RwLock::new(KeyData {
 static EPOCHS: [AtomicU32; PTHREAD_KEYS_MAX as usize] =
     [const { AtomicU32::new(0) }; PTHREAD_KEYS_MAX as usize];
 
-// This uses an epoch-based system for differentiating between
-// reused keys corresponding to the same slot.
-#[thread_local]
-static VALUES: [Cell<ValueWithEpoch>; PTHREAD_KEYS_MAX as usize] =
-    [const { Cell::new(ValueWithEpoch::new()) }; PTHREAD_KEYS_MAX as usize];
+/// Per-thread pthread-key storage.
+///
+/// This hangs off origin's per-thread specifics slot (a pointer next to
+/// errno, reached only via `origin::thread::specifics_location()`) instead
+/// of nightly-only thread-local statics, so c-scape builds on stable. The
+/// block is allocated zeroed on a thread's first `pthread_setspecific` and
+/// freed by the thread-exit cleanup after every key destructor has
+/// settled; threads that never touch pthread specifics never allocate it.
+struct Specifics {
+    // This uses an epoch-based system for differentiating between
+    // reused keys corresponding to the same slot.
+    values: [Cell<ValueWithEpoch>; PTHREAD_KEYS_MAX as usize],
+    has_registered_cleanup: Cell<bool>,
+}
 
-#[thread_local]
-static HAS_REGISTERED_CLEANUP: Cell<bool> = Cell::new(false);
+/// Return the current thread's `Specifics` block if one exists.
+///
+/// All-zero bytes are a valid `Specifics` (every value has epoch 0 and a
+/// null pointer, the flag is `false`), so an absent block and a freshly
+/// zeroed one read identically: every key is null.
+#[inline]
+fn specifics_opt() -> Option<&'static Specifics> {
+    // SAFETY: The slot is null or holds a live block that `specifics`
+    // allocated for this thread; nothing else ever stores to it.
+    unsafe {
+        (*origin::thread::specifics_location())
+            .cast::<Specifics>()
+            .as_ref()
+    }
+}
+
+/// Return the current thread's `Specifics` block, allocating it zeroed on
+/// first touch.
+///
+/// Returns `None` if the allocator fails; the caller reports `ENOMEM` in
+/// the usual pthread way (returning the error code). Panicking is not an
+/// option here, as c-scape may be hosting a panic=abort process.
+fn specifics() -> Option<&'static Specifics> {
+    // SAFETY: The slot is only ever written here and in the thread-exit
+    // cleanup, always with null or a block from the global allocator with
+    // this same layout.
+    unsafe {
+        let slot = origin::thread::specifics_location();
+        let mut ptr = (*slot).cast::<Specifics>();
+        if ptr.is_null() {
+            ptr = alloc::alloc::alloc_zeroed(Layout::new::<Specifics>()).cast();
+            if ptr.is_null() {
+                return None;
+            }
+            *slot = ptr.cast();
+        }
+        Some(&*ptr)
+    }
+}
 
 #[no_mangle]
 unsafe extern "C" fn pthread_getspecific(key: libc::pthread_key_t) -> *mut c_void {
@@ -59,7 +97,14 @@ unsafe extern "C" fn pthread_getspecific(key: libc::pthread_key_t) -> *mut c_voi
         None => return null_mut(),
     };
     let latest_epoch = latest_epoch.load(Ordering::SeqCst);
-    let ValueWithEpoch { epoch, data } = VALUES[key as usize].get();
+
+    // No block means this thread never stored any value: every key reads
+    // as null, exactly as the zeroed storage would.
+    let specifics = match specifics_opt() {
+        Some(specifics) => specifics,
+        None => return null_mut(),
+    };
+    let ValueWithEpoch { epoch, data } = specifics.values[key as usize].get();
 
     // If the latest epoch is newer, then that means this slot got reallocated.
     // Either we are reusing a deleted key, which is UB, or we are reusing
@@ -75,9 +120,17 @@ unsafe extern "C" fn pthread_getspecific(key: libc::pthread_key_t) -> *mut c_voi
 unsafe extern "C" fn pthread_setspecific(key: libc::pthread_key_t, value: *const c_void) -> c_int {
     libc!(libc::pthread_setspecific(key, value));
 
+    // The block must exist before we can store into it. A null return from
+    // the allocator becomes ENOMEM, which POSIX documents for
+    // `pthread_setspecific`.
+    let specifics = match specifics() {
+        Some(specifics) => specifics,
+        None => return libc::ENOMEM,
+    };
+
     // If this is the first-time we have gotten here,
     // we need to actually register the dtors for cleanup.
-    if !HAS_REGISTERED_CLEANUP.get() {
+    if !specifics.has_registered_cleanup.get() {
         origin::thread::at_exit(Box::new(move || {
             for _ in 0..PTHREAD_DESTRUCTOR_ITERATIONS {
                 let mut ran_dtor = false;
@@ -116,9 +169,26 @@ unsafe extern "C" fn pthread_setspecific(key: libc::pthread_key_t, value: *const
                     break;
                 }
             }
+
+            // Every destructor above ran with the block still installed,
+            // so re-entrant `pthread_getspecific`/`pthread_setspecific`
+            // calls saw it; only now that the loop has settled does the
+            // block go away. Null the slot before freeing so a straggling
+            // get reads null rather than freed memory, and a straggling
+            // set starts a fresh block (origin runs destructors registered
+            // during exit, so the fresh block's cleanup still runs).
+            //
+            // SAFETY: The slot holds null or the block this thread
+            // allocated in `specifics`, with the same layout.
+            let slot = origin::thread::specifics_location();
+            let block = (*slot).cast::<Specifics>();
+            *slot = null_mut();
+            if !block.is_null() {
+                alloc::alloc::dealloc(block.cast(), Layout::new::<Specifics>());
+            }
         }));
 
-        HAS_REGISTERED_CLEANUP.set(true);
+        specifics.has_registered_cleanup.set(true);
     }
 
     let latest_epoch = match EPOCHS.get(key as usize) {
@@ -126,7 +196,7 @@ unsafe extern "C" fn pthread_setspecific(key: libc::pthread_key_t, value: *const
         None => return libc::EINVAL,
     };
     let latest_epoch = latest_epoch.load(Ordering::SeqCst);
-    VALUES[key as usize].set(ValueWithEpoch {
+    specifics.values[key as usize].set(ValueWithEpoch {
         epoch: latest_epoch,
         data: value.cast_mut(),
     });

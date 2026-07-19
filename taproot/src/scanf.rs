@@ -353,3 +353,28 @@ unsafe extern "C" fn __isoc23_fscanf(stream: *mut c_void, fmt: *const c_char, ar
 unsafe extern "C" fn __isoc99_fscanf(stream: *mut c_void, fmt: *const c_char, args: ...) -> c_int {
     unsafe { fscanf_buf(stream, fmt, args) }
 }
+
+// the va_list C23 forms. glibc 2.38+ headers redirect scanf-family calls to
+// __isoc23_*, so a closure library compiled against a current glibc (Arch's
+// libncursesw, reached through radeon's LLVM) names __isoc23_vsscanf by
+// symbol; without it the driver closure will not relocate. c's va_list is a
+// pointer to the register-save tag on x86_64, exactly the Scanner the impl
+// walks.
+#[cfg(target_arch = "x86_64")]
+#[unsafe(no_mangle)]
+unsafe extern "C" fn __isoc23_vsscanf(
+    s: *const c_char,
+    fmt: *const c_char,
+    ap: *mut VaListTag,
+) -> c_int {
+    unsafe { vsscanf(s, fmt, &mut *ap) }
+}
+#[cfg(target_arch = "x86_64")]
+#[unsafe(no_mangle)]
+unsafe extern "C" fn __isoc23_vfscanf(
+    stream: *mut c_void,
+    fmt: *const c_char,
+    ap: *mut VaListTag,
+) -> c_int {
+    unsafe { fscanf_buf(stream, fmt, &mut *ap) }
+}

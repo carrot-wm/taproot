@@ -1,6 +1,6 @@
 [package]
 name = "taproot"
-version = "0.22.5"
+version = "0.22.6"
 edition = "2021"
 description = "A standalone pure-Rust libc.so.6: eyra's origin + c-gull built as a cdylib"
 license = "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT"

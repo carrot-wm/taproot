@@ -1,6 +1,6 @@
 [package]
 name = "taproot-eyra"
-version = "0.22.3"
+version = "0.22.4"
 authors = [
     "Dan Gohman <dev@sunfishcode.online>",
 ]
@@ -12,7 +12,7 @@ edition = "2021"
 build = "build.rs"
 
 [dependencies]
-c-gull = { package = "taproot-c-gull", path = "../c-gull", version = "0.22.3", features = ["eyra"], default-features = false }
+c-gull = { package = "taproot-c-gull", path = "../c-gull", version = "0.22.4", features = ["eyra"], default-features = false }
 
 # upstream eyra's surface, forwarded verbatim
 [features]

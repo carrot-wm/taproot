@@ -1,6 +1,6 @@
 [package]
 name = "taproot"
-version = "0.22.4"
+version = "0.22.5"
 edition = "2021"
 description = "A standalone pure-Rust libc.so.6: eyra's origin + c-gull built as a cdylib"
 license = "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT"
@@ -14,12 +14,12 @@ crate-type = ["cdylib"]
 # eyra pulls origin (startup) + c-gull (libc), routed to the fork members
 # todo: blob drivers import far more of the libc surface than they
 # call; the stubs let RTLD_NOW succeed and name anything actually used
-eyra = { package = "taproot-eyra", path = "../eyra", version = "0.22.3", features = ["todo"] }
+eyra = { package = "taproot-eyra", path = "../eyra", version = "0.22.4", features = ["todo"] }
 # the dso ctor feeds this copy of origin/rustix the real auxv (features
 # arrive through eyra's take-charge graph; fs covers the /proc read)
-origin = { package = "taproot-origin", path = "../origin", version = "0.26.3", default-features = false }
+origin = { package = "taproot-origin", path = "../origin", version = "0.26.5", default-features = false }
 rustix = { version = "1.0", default-features = false, features = ["fs"] }
 # scanf's variadic entries ride c-scape's va walker on x86_64 (the crate
 # is already in the link through eyra; features arrive through eyra's
 # take-charge graph, as with origin above)
-c-scape = { package = "taproot-c-scape", path = "../c-scape", version = "0.22.4", default-features = false }
+c-scape = { package = "taproot-c-scape", path = "../c-scape", version = "0.22.5", default-features = false }

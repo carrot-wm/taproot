@@ -12,7 +12,6 @@ use crate::arch::{
 };
 #[cfg(feature = "thread-at-exit")]
 use alloc::boxed::Box;
-#[cfg(any(feature = "unstable-errno", feature = "thread-specifics"))]
 use core::cell::Cell;
 use core::cmp::max;
 use core::ffi::c_void;
@@ -88,7 +87,19 @@ impl Thread {
 
 /// Data associated with a thread.
 ///
-/// This is not `repr(C)` and not ABI-exposed.
+/// The fields through `specifics` are cross-copy ABI: another copy of
+/// origin in the same process (the dlopened libc) reaches them through
+/// the shared thread-pointer register, computing their offsets from its
+/// own compilation of this struct. `repr(C)` plus this fixed prefix keeps
+/// those offsets identical across crate versions, compilers and feature
+/// sets; `repr(Rust)` let two builds of the same source disagree, and the
+/// foreign copy's errno writes landed inside this copy's `dtors`.
+/// Everything after `specifics` is private to the copy that created the
+/// thread, guarded by `magic`. On x86 family this struct follows `Abi`,
+/// so the prefix sits at fixed tp-relative offsets; on the arches where
+/// it precedes `Abi`, cross-copy pairing additionally needs both copies
+/// to agree on the struct's total size.
+#[repr(C)]
 struct ThreadData {
     /// the address of this instance's `INSTANCE_ANCHOR`: a thread created by
     /// a different copy of origin in the same process (exe + dlopened libc)
@@ -96,9 +107,11 @@ struct ThreadData {
     /// refused instead of corrupting
     magic: usize,
     thread_id: AtomicI32,
-    #[cfg(feature = "unstable-errno")]
+    /// present even with the feature off: the offset of every prefix field
+    /// must not depend on the feature set
+    #[cfg_attr(not(feature = "unstable-errno"), allow(dead_code))]
     errno_val: Cell<i32>,
-    #[cfg(feature = "thread-specifics")]
+    #[cfg_attr(not(feature = "thread-specifics"), allow(dead_code))]
     specifics: Cell<*mut c_void>,
     detached: AtomicU8,
     stack_addr: *mut c_void,
@@ -123,9 +136,7 @@ impl ThreadData {
         Self {
             magic: instance_magic(),
             thread_id: AtomicI32::new(0),
-            #[cfg(feature = "unstable-errno")]
             errno_val: Cell::new(0),
-            #[cfg(feature = "thread-specifics")]
             specifics: Cell::new(null_mut()),
             detached: AtomicU8::new(INITIAL),
             stack_addr,

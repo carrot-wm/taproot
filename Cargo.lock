@@ -528,7 +528,7 @@ dependencies = [
 
 [[package]]
 name = "taproot"
-version = "0.22.6"
+version = "0.22.7"
 dependencies = [
  "rustix",
  "taproot-c-scape",
@@ -584,7 +584,7 @@ dependencies = [
 
 [[package]]
 name = "taproot-origin"
-version = "0.26.5"
+version = "0.26.6"
 dependencies = [
  "assert_cmd",
  "atomic-dbg",

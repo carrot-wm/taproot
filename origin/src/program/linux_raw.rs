@@ -38,6 +38,46 @@ use linux_raw_sys::ctypes::c_int;
 #[cfg(all(feature = "program-at-exit", feature = "thread"))]
 use rustix_futex_sync::Mutex;
 
+// The `.init_array`/`.fini_array` bounds. The linker-defined
+// `__init_array_start`-family symbols only exist when the linker chooses
+// to provide them: rust-lld always does, GNU ld does for an executable
+// but never for a shared library, where a plain extern reference becomes
+// an unresolvable `R_X86_64_GLOB_DAT` import (a dlopened libc fails to
+// load over exactly that). Capturing the addresses in the same asm module
+// that declares the symbols weak and hidden makes every link resolve
+// them: real bounds when the linker provides them, an empty `0..0` range
+// otherwise, never a dynamic import.
+#[cfg(feature = "init-array")]
+core::arch::global_asm!(
+    ".weak __init_array_start",
+    ".hidden __init_array_start",
+    ".weak __init_array_end",
+    ".hidden __init_array_end",
+    ".pushsection .data.rel.ro,\"aw\",%progbits",
+    ".balign 8",
+    ".globl __taproot_init_array_bounds",
+    ".hidden __taproot_init_array_bounds",
+    "__taproot_init_array_bounds:",
+    ".dc.a __init_array_start",
+    ".dc.a __init_array_end",
+    ".popsection",
+);
+#[cfg(feature = "fini-array")]
+core::arch::global_asm!(
+    ".weak __fini_array_start",
+    ".hidden __fini_array_start",
+    ".weak __fini_array_end",
+    ".hidden __fini_array_end",
+    ".pushsection .data.rel.ro,\"aw\",%progbits",
+    ".balign 8",
+    ".globl __taproot_fini_array_bounds",
+    ".hidden __taproot_fini_array_bounds",
+    "__taproot_fini_array_bounds:",
+    ".dc.a __fini_array_start",
+    ".dc.a __fini_array_end",
+    ".popsection",
+);
+
 #[cfg(not(any(feature = "origin-start", feature = "external-start")))]
 compile_error!("\"origin-program\" depends on either \"origin-start\" or \"external-start\".");
 
@@ -110,19 +150,15 @@ pub(super) unsafe extern "C" fn entry(mem: *mut usize) -> ! {
             use core::arch::asm;
             use core::ffi::c_void;
 
-            // The linker-generated symbols that mark the start and end of the
-            // `.init_array` section.
-            unsafe extern "C" {
-                static __init_array_start: c_void;
-                static __init_array_end: c_void;
-            }
-
             // Call the `.init_array` functions. As glibc does, pass argc, argv,
             // and envp as extra arguments. In addition to glibc ABI compatibility,
             // c-scape relies on this.
             type InitFn = unsafe extern "C" fn(c_int, *mut *mut u8, *mut *mut u8);
-            let mut init = core::ptr::addr_of!(__init_array_start).cast::<InitFn>();
-            let init_end = core::ptr::addr_of!(__init_array_end).cast::<InitFn>();
+            unsafe extern "C" {
+                static __taproot_init_array_bounds: [*const c_void; 2];
+            }
+            let mut init = __taproot_init_array_bounds[0].cast::<InitFn>();
+            let init_end = __taproot_init_array_bounds[1].cast::<InitFn>();
             // Prevent the optimizer from optimizing the `!=` comparison to true;
             // `init` and `init_start` may have the same address.
             asm!("# {}", inout(reg) init, options(pure, nomem, nostack, preserves_flags));
@@ -327,17 +363,13 @@ pub fn exit(status: c_int) -> ! {
         use core::arch::asm;
         use core::ffi::c_void;
 
-        // The linker-generated symbols that mark the start and end of the
-        // `.fini_array` section.
-        unsafe extern "C" {
-            static __fini_array_start: c_void;
-            static __fini_array_end: c_void;
-        }
-
         // Call the `.fini_array` functions.
         type FiniFn = extern "C" fn();
-        let mut fini = core::ptr::addr_of!(__fini_array_end).cast::<FiniFn>();
-        let fini_start = core::ptr::addr_of!(__fini_array_start).cast::<FiniFn>();
+        unsafe extern "C" {
+            static __taproot_fini_array_bounds: [*const c_void; 2];
+        }
+        let mut fini = __taproot_fini_array_bounds[1].cast::<FiniFn>();
+        let fini_start = __taproot_fini_array_bounds[0].cast::<FiniFn>();
         // Prevent the optimizer from optimizing the `!=` comparison to true;
         // `fini` and `fini_start` may have the same address.
         asm!("# {}", inout(reg) fini, options(pure, nomem, nostack, preserves_flags));

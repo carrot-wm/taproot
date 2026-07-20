@@ -643,6 +643,206 @@ unsafe extern "C" fn scandir64(
     count as c_int
 }
 
+// -- fortify wrappers ----------------------------------------------------------
+// _FORTIFY_SOURCE builds of the closure (fedora and arch compile mesa, llvm,
+// libedit and ncurses with it) call __*_chk instead of the plain names. The
+// glibc versions abort when the compiler-known buffer size is exceeded; these
+// forward to the base behavior, which keeps every correct caller correct.
+// radv reaches __strlcpy_chk on the vkCreateDevice path (the device name), so
+// this family is load-bearing, not cosmetic.
+
+unsafe extern "C" {
+    fn getcwd(buf: *mut c_char, size: usize) -> *mut c_char;
+    fn gethostname(name: *mut c_char, len: usize) -> c_int;
+    fn poll(fds: *mut c_void, nfds: c_ulong, timeout: c_int) -> c_int;
+    fn recv(fd: c_int, buf: *mut c_void, len: usize, flags: c_int) -> isize;
+    fn pthread_once(once: *mut c_int, init: extern "C" fn()) -> c_int;
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn __strlcpy_chk(d: *mut c_char, s: *const c_char, size: usize, _destlen: usize) -> usize {
+    let mut srclen = 0;
+    while unsafe { *s.add(srclen) } != 0 {
+        srclen += 1;
+    }
+    if size != 0 {
+        let copy = core::cmp::min(srclen, size - 1);
+        unsafe {
+            core::ptr::copy_nonoverlapping(s, d, copy);
+            *d.add(copy) = 0;
+        }
+    }
+    srclen
+}
+#[unsafe(no_mangle)]
+unsafe extern "C" fn __wcsncpy_chk(d: *mut wchar_t, s: *const wchar_t, n: usize, _destlen: usize) -> *mut wchar_t {
+    let mut i = 0;
+    while i < n {
+        let wc = unsafe { *s.add(i) };
+        unsafe { *d.add(i) = wc };
+        i += 1;
+        if wc == 0 {
+            break;
+        }
+    }
+    while i < n {
+        unsafe { *d.add(i) = 0 };
+        i += 1;
+    }
+    d
+}
+#[unsafe(no_mangle)]
+unsafe extern "C" fn __wmemcpy_chk(d: *mut wchar_t, s: *const wchar_t, n: usize, _destlen: usize) -> *mut wchar_t {
+    unsafe { wmemcpy(d, s, n) }
+}
+#[unsafe(no_mangle)]
+unsafe extern "C" fn __wmemset_chk(d: *mut wchar_t, c: wchar_t, n: usize, _destlen: usize) -> *mut wchar_t {
+    unsafe { wmemset(d, c, n) }
+}
+#[unsafe(no_mangle)]
+unsafe extern "C" fn __wcrtomb_chk(s: *mut c_char, wc: wchar_t, ps: *mut c_void, _buflen: usize) -> usize {
+    unsafe { wcrtomb(s, wc, ps) }
+}
+#[unsafe(no_mangle)]
+unsafe extern "C" fn __mbsrtowcs_chk(dst: *mut wchar_t, src: *mut *const c_char, len: usize, ps: *mut c_void, _dstlen: usize) -> usize {
+    unsafe { mbsrtowcs(dst, src, len, ps) }
+}
+#[unsafe(no_mangle)]
+unsafe extern "C" fn __wcstombs_chk(dst: *mut c_char, src: *const wchar_t, len: usize, _dstlen: usize) -> usize {
+    let mut p = src;
+    unsafe { wcsnrtombs(dst, &mut p, usize::MAX, len, core::ptr::null_mut()) }
+}
+#[unsafe(no_mangle)]
+unsafe extern "C" fn __getcwd_chk(buf: *mut c_char, size: usize, _buflen: usize) -> *mut c_char {
+    unsafe { getcwd(buf, size) }
+}
+#[unsafe(no_mangle)]
+unsafe extern "C" fn __gethostname_chk(name: *mut c_char, len: usize, _namelen: usize) -> c_int {
+    unsafe { gethostname(name, len) }
+}
+#[unsafe(no_mangle)]
+unsafe extern "C" fn __poll_chk(fds: *mut c_void, nfds: c_ulong, timeout: c_int, _fdslen: usize) -> c_int {
+    unsafe { poll(fds, nfds, timeout) }
+}
+#[unsafe(no_mangle)]
+unsafe extern "C" fn __recv_chk(fd: c_int, buf: *mut c_void, len: usize, _buflen: usize, flags: c_int) -> isize {
+    unsafe { recv(fd, buf, len, flags) }
+}
+#[unsafe(no_mangle)]
+unsafe extern "C" fn __openat_2(fd: c_int, path: *const c_char, oflag: c_int) -> c_int {
+    const SYS_OPENAT: isize = 257;
+    unsafe { syscall3(SYS_OPENAT, fd as isize, path as isize, oflag as isize) as c_int }
+}
+
+// C23 wide integer parse (llvm's CommandLine reaches it via libedit). C
+// locale, bases 0/8/10/16, glibc-shaped endptr handling.
+#[unsafe(no_mangle)]
+unsafe extern "C" fn __isoc23_wcstol(s: *const wchar_t, end: *mut *mut wchar_t, mut base: c_int) -> c_long {
+    let mut p = s;
+    while matches!(unsafe { *p }, 0x20 | 0x09..=0x0d) {
+        p = unsafe { p.add(1) };
+    }
+    let neg = match unsafe { *p } {
+        0x2d => {
+            p = unsafe { p.add(1) };
+            true
+        }
+        0x2b => {
+            p = unsafe { p.add(1) };
+            false
+        }
+        _ => false,
+    };
+    if (base == 0 || base == 16)
+        && unsafe { *p } == 0x30
+        && matches!(unsafe { *p.add(1) }, 0x78 | 0x58)
+    {
+        p = unsafe { p.add(2) };
+        base = 16;
+    } else if base == 0 {
+        base = if unsafe { *p } == 0x30 { 8 } else { 10 };
+    }
+    let mut any = false;
+    let mut v: c_long = 0;
+    loop {
+        let wc = unsafe { *p };
+        let digit = match wc {
+            0x30..=0x39 => wc - 0x30,
+            0x41..=0x5a => wc - 0x41 + 10,
+            0x61..=0x7a => wc - 0x61 + 10,
+            _ => break,
+        };
+        if digit >= base {
+            break;
+        }
+        v = v.saturating_mul(base as c_long).saturating_add(digit as c_long);
+        any = true;
+        p = unsafe { p.add(1) };
+    }
+    if !end.is_null() {
+        unsafe { *end = (if any { p } else { s }) as *mut wchar_t };
+    }
+    if neg { -v } else { v }
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn __mbsnrtowcs_chk(dst: *mut wchar_t, src: *mut *const c_char, nmc: usize, len: usize, ps: *mut c_void, _dstlen: usize) -> usize {
+    unsafe { mbsnrtowcs(dst, src, nmc, len, ps) }
+}
+#[unsafe(no_mangle)]
+unsafe extern "C" fn __isoc23_strtoimax(s: *const c_char, end: *mut *mut c_char, base: c_int) -> i64 {
+    unsafe { strtoll(s, end, base) }
+}
+#[unsafe(no_mangle)]
+unsafe extern "C" fn __isoc23_strtoumax(s: *const c_char, end: *mut *mut c_char, base: c_int) -> u64 {
+    unsafe { strtoull(s, end, base) }
+}
+
+// resolver herrno for ubuntu's libX11 chain; per-process is fine, nothing
+// in a driver closure resolves hostnames concurrently
+static mut H_ERRNO: c_int = 0;
+#[unsafe(no_mangle)]
+extern "C" fn __h_errno_location() -> *mut c_int {
+    core::ptr::addr_of_mut!(H_ERRNO)
+}
+
+// C11 call_once: glibc's once_flag is pthread_once_t under the hood, and so
+// is c-scape's; forward straight through
+#[unsafe(no_mangle)]
+unsafe extern "C" fn call_once(flag: *mut c_int, init: extern "C" fn()) {
+    unsafe { pthread_once(flag, init) };
+}
+
+// modern syscall wrappers (glibc 2.36+) the closure imports; thin and raw,
+// errno convention matching the callers (they check < 0)
+#[unsafe(no_mangle)]
+unsafe extern "C" fn pidfd_open(pid: c_int, flags: c_int) -> c_int {
+    unsafe { syscall3(434, pid as isize, flags as isize, 0) as c_int }
+}
+#[unsafe(no_mangle)]
+unsafe extern "C" fn pidfd_send_signal(pidfd: c_int, sig: c_int, info: *mut c_void, flags: c_int) -> c_int {
+    let ret: isize;
+    unsafe {
+        core::arch::asm!("syscall",
+            inlateout("rax") 424isize => ret, in("rdi") pidfd as isize, in("rsi") sig as isize,
+            in("rdx") info, in("r10") flags as isize,
+            out("rcx") _, out("r11") _, options(nostack, preserves_flags));
+    }
+    ret as c_int
+}
+#[unsafe(no_mangle)]
+unsafe extern "C" fn open_tree(dfd: c_int, path: *const c_char, flags: c_int) -> c_int {
+    unsafe { syscall3(428, dfd as isize, path as isize, flags as isize) as c_int }
+}
+#[unsafe(no_mangle)]
+unsafe extern "C" fn capget(hdr: *mut c_void, data: *mut c_void) -> c_int {
+    unsafe { syscall3(125, hdr as isize, data as isize, 0) as c_int }
+}
+#[unsafe(no_mangle)]
+unsafe extern "C" fn capset(hdr: *mut c_void, data: *mut c_void) -> c_int {
+    unsafe { syscall3(126, hdr as isize, data as isize, 0) as c_int }
+}
+
 #[unsafe(no_mangle)]
 unsafe extern "C" fn truncate(path: *const c_char, length: c_long) -> c_int {
     let ret: isize;
